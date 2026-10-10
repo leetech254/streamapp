@@ -1283,6 +1283,14 @@
             if (!response.ok) throw new Error(apiErrorText(body.error || body, `YOCINEMA_HTTP_${response.status}`));
             return body;
         }
+        async function youtubeApiFetch(query) {
+            const url = new URL('/api/youtube', window.location.origin);
+            url.search = new URLSearchParams({ q: String(query || '').trim(), maxResults: 25 }).toString();
+            const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(apiErrorText(body.error || body, `YOUTUBE_HTTP_${response.status}`));
+            return body;
+        }
         function safeWebUrl(value) {
             const raw = String(value || '').trim();
             if (!raw) return '';
@@ -1960,6 +1968,36 @@
             document.getElementById('search-status').innerText = resBox.children.length ? `FOUND ${resBox.children.length} OFFICIAL KENYAN CHANNELS` : 'NO KENYAN CHANNEL MATCH — TRY CITIZEN, NTV, KTN, K24, KBC, TV47 OR MAISHA';
         }
 
+        async function searchKenyaYouTubeChannels(query) {
+            const term = String(query || '').trim();
+            if (!term) return renderKenyaSearchResults('');
+            const resBox = document.getElementById('api-results');
+            try {
+                const data = await youtubeApiFetch(`${term} Kenya TV official live`);
+                const results = (data.items || []).filter(item => item && item.id && item.id.channelId && item.snippet);
+                resBox.replaceChildren();
+                results.forEach(item => {
+                    const channelId = item.id.channelId;
+                    const title = String(item.snippet.title || 'Official TV channel');
+                    const description = String(item.snippet.description || 'Official YouTube channel');
+                    const img = safeWebUrl(item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url) || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=222&color=ffd700&size=512`;
+                    const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play live ${title}`);
+                    const image = document.createElement('img'); image.src = img; image.alt = `${title} logo`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
+                    const caption = document.createElement('span'); caption.textContent = `${title} — OFFICIAL LIVE CHANNEL`; caption.title = description; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
+                    card.append(image, caption);
+                    card.addEventListener('click', () => {
+                        const entry = { name: title.toUpperCase(), channelId, type: 'youtube', category: 'kenya', img, watched: false, fav: false, reqVip: false };
+                        CHANNELS.unshift(entry); save(); closeSearch(); switchSource(0);
+                    });
+                    resBox.appendChild(card);
+                });
+                document.getElementById('search-status').innerText = results.length ? `FOUND ${results.length} OFFICIAL YOUTUBE TV CHANNELS` : 'NO OFFICIAL YOUTUBE TV CHANNELS FOUND';
+            } catch (error) {
+                renderKenyaSearchResults(term);
+                document.getElementById('search-status').innerText = error.message === 'YOUTUBE_API_KEY is not configured' ? 'YOUTUBE CHANNEL SEARCH NEEDS YOUTUBE_API_KEY — SHOWING SAVED OFFICIAL KENYAN CHANNELS' : `YOUTUBE CHANNEL SEARCH FAILED — SHOWING SAVED OFFICIAL CHANNELS`;
+            }
+        }
+
         async function fetchArchiveResults(query) {
             const resBox = document.getElementById('api-results');
             const term = String(query || '').trim();
@@ -2123,7 +2161,7 @@
 
             try {
                 if (searchMode === 'archive') { fetchArchiveResults(query); return; }
-                if (searchMode === 'kenya') { renderKenyaSearchResults(query); return; }
+                if (searchMode === 'kenya') { searchKenyaYouTubeChannels(query); return; }
                 if (searchMode === 'yocinema') { fetchYocinemaResults(query); return; }
                 if (searchMode === 'music') {
                     const data = await jamendoFetch({ search: query, order: 'relevance' });

@@ -28,6 +28,10 @@ Create an application in the [Jamendo developer portal](https://devportal.jamend
 
 Add `YOCINEMA_API_KEY` to Vercel Project Settings for Production and Preview, then redeploy. Stream HD calls YOCINEMA only through `/api/yocinema`; the key is never sent to the browser. The **YOCINEMA** search button uses the catalog API, obtains a short-lived stream token server-side, and plays the returned authorized stream through the native HTML5 video player. The interface language is English by default, and YOCINEMA starts in **English / original audio** mode; **Translated version** remains available using the provider's documented `type=translated` and `type=original` options. Use YOCINEMA only for content and translations you are authorized to distribute.
 
+## Official Kenya TV channel search
+
+Add `YOUTUBE_API_KEY` to Vercel Project Settings for Production and Preview to enable **FIND KENYA TV** searches across official YouTube channels. The key remains server-side in `/api/youtube`; search results are channel IDs and playback always uses each channel's official live-stream embed, never a recorded video URL. The built-in Citizen TV, NTV Kenya, KTN News, K24 TV, KBC, TV47, and Maisha TV entries remain available when the YouTube API key is missing or quota is unavailable.
+
 ## Add media and TV
 
 Use the paste panel to play YouTube, audio, video, or HLS links in the embedded player. **Download** uses a browser-integrated blob download for Jamendo tracks and direct media sources that permit CORS; embedded video and live HLS streams remain playback-only. Jamendo tracks include artist attribution and a link back to their Jamendo page. Direct source URLs must be absolute HTTP(S) links and work only when supported by the browser, the stream's codecs, and its CORS policy. For catalog items, add the TMDB ID for metadata and add an authorized direct MP4, WebM, MOV, or HLS URL in the optional playback field to enable **PLAY FULL**. TMDB does not provide full movie or series files.
