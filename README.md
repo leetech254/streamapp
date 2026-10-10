@@ -30,7 +30,7 @@ Add `YOCINEMA_API_KEY` to Vercel Project Settings for Production and Preview, th
 
 ## Official Kenya TV channel search
 
-Add `YOUTUBE_API_KEY` to Vercel Project Settings for Production and Preview to enable **FIND KENYA TV** searches across official YouTube channels. The key remains server-side in `/api/youtube`; search results are channel IDs and playback always uses each channel's official live-stream embed, never a recorded video URL. The built-in Citizen TV, NTV Kenya, KTN News, K24 TV, KBC, TV47, and Maisha TV entries remain available when the YouTube API key is missing or quota is unavailable.
+Add `YOUTUBE_API_KEY` to Vercel Project Settings for Production and Preview to enable **FIND KENYA TV** searches across official YouTube channels. The key remains server-side in `/api/youtube-search`; search results are channel IDs and playback always uses each channel's official live-stream embed, never a recorded video URL. The built-in Citizen TV, NTV Kenya, KTN News, K24 TV, KBC, TV47, and Maisha TV entries remain available when the YouTube API key is missing or quota is unavailable.
 
 ## Add media and TV
 

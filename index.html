@@ -1284,7 +1284,7 @@
             return body;
         }
         async function youtubeApiFetch(query) {
-            const url = new URL('/api/youtube', window.location.origin);
+            const url = new URL('/api/youtube-search', window.location.origin);
             url.search = new URLSearchParams({ q: String(query || '').trim(), maxResults: 25 }).toString();
             const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
             const body = await response.json().catch(() => ({}));
