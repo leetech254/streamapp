@@ -13,17 +13,22 @@ module.exports = async function youtubeHandler(req, res) {
   if (!apiKey) return errorResponse(res, 503, 'YOUTUBE_API_KEY is not configured', 'YOUTUBE_API_KEY_MISSING');
 
   const query = String((req.query && req.query.q) || '').trim();
-  if (!query) return errorResponse(res, 400, 'A search query is required', 'YOUTUBE_QUERY_MISSING');
+  const channelId = String((req.query && req.query.channelId) || '').trim();
+  const liveOnly = String((req.query && req.query.live) || '') === '1';
+  if (!query && !channelId) return errorResponse(res, 400, 'A search query or channel ID is required', 'YOUTUBE_QUERY_MISSING');
   const url = new URL(`${API_BASE}/search`);
-  url.search = new URLSearchParams({
+  const params = {
     part: 'snippet',
-    type: 'channel',
-    q: query,
-    maxResults: String(Math.min(Math.max(Number(req.query.maxResults) || 25, 1), 50)),
+    type: liveOnly ? 'video' : 'channel',
+    maxResults: String(Math.min(Math.max(Number(req.query.maxResults) || (liveOnly ? 1 : 25), 1), 50)),
     regionCode: 'KE',
     relevanceLanguage: 'en',
     key: apiKey
-  }).toString();
+  };
+  if (query) params.q = query;
+  if (channelId) params.channelId = channelId;
+  if (liveOnly) params.eventType = 'live';
+  url.search = new URLSearchParams(params).toString();
 
   try {
     const upstream = await fetch(url);

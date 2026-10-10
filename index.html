@@ -1283,13 +1283,34 @@
             if (!response.ok) throw new Error(apiErrorText(body.error || body, `YOCINEMA_HTTP_${response.status}`));
             return body;
         }
-        async function youtubeApiFetch(query) {
+        async function youtubeApiFetch(query, params = {}) {
             const url = new URL('/api/youtube-search', window.location.origin);
-            url.search = new URLSearchParams({ q: String(query || '').trim(), maxResults: 25 }).toString();
+            url.search = new URLSearchParams({ ...(query ? { q: String(query).trim() } : {}), maxResults: 25, ...params }).toString();
             const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
             const body = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(apiErrorText(body.error || body, `YOUTUBE_HTTP_${response.status}`));
             return body;
+        }
+        async function openKenyaLiveChannel(channel, frame) {
+            const channelId = String(channel && channel.channelId || '').trim();
+            if (!channelId) return youtubeChannelFallback(channel.name, '', channel.channelUrl || '');
+            setPlayerStatus('Checking official live broadcast…');
+            try {
+                const data = await youtubeApiFetch('', { channelId, live: '1', maxResults: 1 });
+                const activeVideoId = data.items && data.items[0] && data.items[0].id && data.items[0].id.videoId;
+                if (activeVideoId) {
+                    frame.style.display = 'block';
+                    frame.src = youtubeEmbedUrl(encodeURIComponent(activeVideoId));
+                    setPlayerStatus('Playing official live broadcast');
+                    showToast('OPENING LIVE TV');
+                    return true;
+                }
+                youtubeChannelFallback(channel.name, channelId, channel.channelUrl || '');
+                return false;
+            } catch (error) {
+                youtubeChannelFallback(channel.name, channelId, channel.channelUrl || '');
+                return false;
+            }
         }
         function safeWebUrl(value) {
             const raw = String(value || '').trim();
@@ -1432,8 +1453,8 @@
         }
         function youtubeChannelFallback(title, channelId, channelUrl) {
             const actions = youtubeChannelLinks(channelId, channelUrl);
-            setPlayerStatus('Official broadcaster feed is loading. If no live programme is scheduled, it will resume when the next broadcast starts.', actions);
-            showToast('OFFICIAL CHANNEL FEED LOADING');
+            setPlayerStatus('No live programme is currently available. Open the official channel to watch when its next broadcast starts.', actions);
+            showToast('NO LIVE PROGRAMME CURRENTLY AVAILABLE');
             return false;
         }
         function youtubeChannelEmbedUrl(channelId) {
@@ -2286,15 +2307,8 @@
             if (ch.type === 'youtube') {
                 const frame = document.getElementById('yt-frame');
                 if (ch.category === 'kenya' && ch.channelId) {
-                    const embedUrl = youtubeChannelEmbedUrl(ch.channelId);
-                    if (embedUrl) {
-                        frame.style.display = 'block';
-                        frame.src = embedUrl;
-                        setPlayerStatus('Playing official live channel');
-                        showToast('OPENING OFFICIAL LIVE TV');
-                    } else {
-                        openedSource = youtubeChannelFallback(ch.name, ch.channelId, ch.channelUrl || '');
-                    }
+                    openedSource = false;
+                    openKenyaLiveChannel(ch, frame);
                 } else if (ch.liveVideoId) {
                     frame.style.display = 'block';
                     frame.src = youtubeEmbedUrl(encodeURIComponent(ch.liveVideoId));
