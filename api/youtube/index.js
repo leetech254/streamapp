@@ -15,11 +15,12 @@ module.exports = async function youtubeHandler(req, res) {
   const query = String((req.query && req.query.q) || '').trim();
   const channelId = String((req.query && req.query.channelId) || '').trim();
   const liveOnly = String((req.query && req.query.live) || '') === '1';
+  const videoMode = String((req.query && req.query.mode) || '') === 'video';
   if (!query && !channelId) return errorResponse(res, 400, 'A search query or channel ID is required', 'YOUTUBE_QUERY_MISSING');
   const url = new URL(`${API_BASE}/search`);
   const params = {
     part: 'snippet',
-    type: liveOnly ? 'video' : 'channel',
+    type: liveOnly || videoMode ? 'video' : 'channel',
     maxResults: String(Math.min(Math.max(Number(req.query.maxResults) || (liveOnly ? 1 : 25), 1), 50)),
     regionCode: 'KE',
     relevanceLanguage: 'en',
@@ -28,6 +29,7 @@ module.exports = async function youtubeHandler(req, res) {
   if (query) params.q = query;
   if (channelId) params.channelId = channelId;
   if (liveOnly) params.eventType = 'live';
+  if (videoMode) { params.videoEmbeddable = 'true'; params.videoSyndicated = 'true'; }
   url.search = new URLSearchParams(params).toString();
 
   try {

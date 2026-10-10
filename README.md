@@ -32,6 +32,8 @@ Add `YOCINEMA_API_KEY` to Vercel Project Settings for Production and Preview, th
 
 Add `YOUTUBE_API_KEY` to Vercel Project Settings for Production and Preview to enable **FIND KENYA TV** searches across official YouTube channels. The key remains server-side in `/api/youtube-search`; search results are channel IDs and playback always uses each channel's official live-stream embed, never a recorded video URL. The built-in Citizen TV, NTV Kenya, KTN News, K24 TV, KBC, TV47, and Maisha TV entries remain available when the YouTube API key is missing or quota is unavailable.
 
+YouTube also powers the **YOUTUBE AUDIO** and **YOUTUBE VIDEOS** search buttons. Results are restricted to embeddable YouTube videos and play in the in-page official YouTube player; the app does not extract or download YouTube media. **FIND MUSIC** continues to use Jamendo for direct licensed audio playback, while **FREE ARCHIVE FILMS** continues to use Internet Archive public-domain embeds, so each provider is used for the media type it supports best.
+
 ## Add media and TV
 
 Use the paste panel to play YouTube, audio, video, or HLS links in the embedded player. **Download** uses a browser-integrated blob download for Jamendo tracks and direct media sources that permit CORS; embedded video and live HLS streams remain playback-only. Jamendo tracks include artist attribution and a link back to their Jamendo page. Direct source URLs must be absolute HTTP(S) links and work only when supported by the browser, the stream's codecs, and its CORS policy. For catalog items, add the TMDB ID for metadata and add an authorized direct MP4, WebM, MOV, or HLS URL in the optional playback field to enable **PLAY FULL**. TMDB does not provide full movie or series files.

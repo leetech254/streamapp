@@ -991,6 +991,8 @@
                     <button class="btn btn-primary" onclick="openSearch('tv')">📺 FIND SERIES</button>
                     <button class="btn btn-primary" onclick="openSearch('yocinema')">🎞️ YOCINEMA</button>
                     <button class="btn btn-primary" onclick="openSearch('music')">🎵 FIND MUSIC</button>
+                    <button class="btn btn-primary" onclick="openSearch('youtube-audio')">🎧 YOUTUBE AUDIO</button>
+                    <button class="btn btn-primary" onclick="openSearch('youtube-video')">▶️ YOUTUBE VIDEOS</button>
                     <button class="btn btn-primary" onclick="openSearch('kenya')">🇰🇪 FIND KENYA TV</button>
                     <button class="btn btn-primary" onclick="openSearch('archive')">🎞️ FREE ARCHIVE FILMS</button>
 
@@ -1932,14 +1934,14 @@
         function openSearch(type) {
             searchMode = type;
             document.getElementById('search-input').value = '';
-            document.getElementById('search-head-title').innerText = type === 'movie' ? ' 🎬 SEARCH MOVIES' : type === 'tv' ? '📺 SEARCH SERIES' : type === 'yocinema' ? '🎞️ SEARCH YOCINEMA' : type === 'kenya' ? '🇰🇪 SEARCH KENYA TV' : type === 'archive' ? '🎞️ FREE ARCHIVE FILMS' : '🎵 SEARCH MUSIC';
+            document.getElementById('search-head-title').innerText = type === 'movie' ? ' 🎬 SEARCH MOVIES' : type === 'tv' ? '📺 SEARCH SERIES' : type === 'yocinema' ? '🎞️ SEARCH YOCINEMA' : type === 'youtube-audio' ? '🎧 SEARCH YOUTUBE AUDIO' : type === 'youtube-video' ? '▶️ SEARCH YOUTUBE VIDEOS' : type === 'kenya' ? '🇰🇪 SEARCH KENYA TV' : type === 'archive' ? '🎞️ FREE ARCHIVE FILMS' : '🎵 SEARCH MUSIC';
             document.getElementById('api-results').innerHTML = '';
-            document.getElementById('search-status').innerText = type === 'kenya' ? 'READY — SEARCH OFFICIAL KENYAN CHANNELS' : type === 'archive' ? 'SEARCHING INTERNET ARCHIVE PRELINGER COLLECTION...' : type === 'yocinema' ? 'LOADING YOCINEMA CATALOG...' : 'LOADING TRENDING TODAY...';
+            document.getElementById('search-status').innerText = type === 'kenya' ? 'READY — SEARCH OFFICIAL KENYAN CHANNELS' : type === 'archive' ? 'SEARCHING INTERNET ARCHIVE PRELINGER COLLECTION...' : type === 'yocinema' ? 'LOADING YOCINEMA CATALOG...' : type === 'youtube-audio' ? 'SEARCHING OFFICIAL YOUTUBE AUDIO...' : type === 'youtube-video' ? 'SEARCHING OFFICIAL YOUTUBE VIDEOS...' : 'LOADING TRENDING TODAY...';
             const yocinemaLanguageControls = document.getElementById('yocinema-language-controls');
             if (yocinemaLanguageControls) yocinemaLanguageControls.style.display = type === 'yocinema' ? 'flex' : 'none';
             document.getElementById('search-overlay').style.display = 'flex';
 
-            if (type === 'kenya') renderKenyaSearchResults(''); else if (type === 'archive') fetchArchiveResults(''); else if (type === 'yocinema') fetchYocinemaResults(''); else fetchTrending(type);
+            if (type === 'kenya') renderKenyaSearchResults(''); else if (type === 'archive') fetchArchiveResults(''); else if (type === 'yocinema') fetchYocinemaResults(''); else if (type === 'youtube-audio') fetchYouTubeVideoResults('official music audio'); else if (type === 'youtube-video') fetchYouTubeVideoResults('official videos'); else fetchTrending(type);
             setTimeout(() => document.getElementById('search-input').focus(), 100);
         }
         function mobileNav(action) {
@@ -2017,6 +2019,46 @@
                 renderKenyaSearchResults(term);
                 document.getElementById('search-status').innerText = error.message === 'YOUTUBE_API_KEY is not configured' ? 'YOUTUBE CHANNEL SEARCH NEEDS YOUTUBE_API_KEY — SHOWING SAVED OFFICIAL KENYAN CHANNELS' : `YOUTUBE CHANNEL SEARCH FAILED — SHOWING SAVED OFFICIAL CHANNELS`;
             }
+        }
+
+        async function fetchYouTubeVideoResults(query) {
+            const term = String(query || '').trim();
+            const searchTerm = searchMode === 'youtube-audio' ? `${term} official audio` : term;
+            const resBox = document.getElementById('api-results');
+            try {
+                const data = await youtubeApiFetch(searchTerm || 'official videos', { mode: 'video', maxResults: 25 });
+                const results = (data.items || []).filter(item => item && item.id && item.id.videoId && item.snippet);
+                renderYouTubeVideoResults(results, searchMode === 'youtube-audio');
+                document.getElementById('search-status').innerText = results.length ? `FOUND ${results.length} OFFICIAL YOUTUBE ${searchMode === 'youtube-audio' ? 'AUDIO' : 'VIDEOS'}` : 'NO YOUTUBE RESULTS FOUND';
+            } catch (error) {
+                resBox.innerHTML = '<p style="padding:30px;color:#777">YouTube search is temporarily unavailable. Check the API key and quota.</p>';
+                document.getElementById('search-status').innerText = error.message === 'YOUTUBE_API_KEY is not configured' ? 'ADD YOUTUBE_API_KEY IN VERCEL TO SEARCH YOUTUBE' : `YOUTUBE SEARCH FAILED: ${apiErrorText(error.message)}`;
+            }
+        }
+
+        function renderYouTubeVideoResults(results, audioMode) {
+            const resBox = document.getElementById('api-results');
+            resBox.replaceChildren();
+            results.forEach(item => {
+                const videoId = String(item.id.videoId || '').trim(); if (!videoId) return;
+                const title = String(item.snippet.title || 'YouTube video').replace(/<[^>]+>/g, '');
+                const channel = String(item.snippet.channelTitle || 'Official YouTube channel');
+                const img = safeWebUrl(item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url) || `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
+                const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play ${title}`);
+                const image = document.createElement('img'); image.src = img; image.alt = `${title} thumbnail`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
+                const caption = document.createElement('span'); caption.textContent = `${title} — ${channel}`; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
+                card.append(image, caption); card.addEventListener('click', () => playYouTubeResult(videoId, title, audioMode)); resBox.appendChild(card);
+            });
+        }
+
+        function playYouTubeResult(videoId, title, audioMode) {
+            hideAllPlayers();
+            const frame = document.getElementById('yt-frame');
+            frame.style.display = 'block';
+            frame.src = youtubeEmbedUrl(encodeURIComponent(videoId));
+            closeSearch();
+            setPlayerStatus(audioMode ? 'Playing official YouTube audio video' : 'Playing official YouTube video');
+            showToast(audioMode ? 'OPENING OFFICIAL AUDIO' : 'OPENING OFFICIAL VIDEO');
         }
 
         async function fetchArchiveResults(query) {
@@ -2184,6 +2226,7 @@
                 if (searchMode === 'archive') { fetchArchiveResults(query); return; }
                 if (searchMode === 'kenya') { searchKenyaYouTubeChannels(query); return; }
                 if (searchMode === 'yocinema') { fetchYocinemaResults(query); return; }
+                if (searchMode === 'youtube-audio' || searchMode === 'youtube-video') { fetchYouTubeVideoResults(query); return; }
                 if (searchMode === 'music') {
                     const data = await jamendoFetch({ search: query, order: 'relevance' });
                     if (data.results && data.results.length > 0) {
