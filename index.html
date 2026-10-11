@@ -584,6 +584,13 @@
             backdrop-filter: blur(20px); 
             -webkit-backdrop-filter: blur(20px);
         }
+        .channel-popup { width:min(92%,520px); margin:auto; padding:30px; border:1px solid rgba(37,211,102,.55); border-radius:22px; background:linear-gradient(145deg,#111,#050505); box-shadow:0 25px 90px rgba(0,0,0,.8),0 0 45px rgba(37,211,102,.12); text-align:center; }
+        .channel-popup-mark { width:64px; height:64px; margin:0 auto 14px; display:grid; place-items:center; border-radius:50%; background:#25d366; color:#050505; font-size:2rem; box-shadow:0 0 30px rgba(37,211,102,.35); }
+        .channel-popup h2 { margin:0 0 10px; color:#fff; font:900 1.35rem 'Orbitron',sans-serif; letter-spacing:1px; }
+        .channel-popup p { margin:0 auto 22px; color:#bcbcbc; line-height:1.6; max-width:410px; }
+        .channel-popup-actions { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+        .channel-popup-actions .btn { min-width:145px; }
+        .channel-popup-dismiss { margin-top:15px; border:0; background:none; color:#777; cursor:pointer; font:600 .72rem 'Source Code Pro',monospace; }
 
         .search-box { 
             width: 90%; 
@@ -841,6 +848,19 @@
     <div id="bg-glow"></div>
     <div id="toast">SYSTEM READY</div>
     <div id="offline-banner" role="status" aria-live="polite"></div>
+
+    <div id="whatsapp-channel-popup" class="overlay-screen" role="dialog" aria-modal="true" aria-labelledby="whatsapp-channel-title">
+        <div class="channel-popup" onclick="event.stopPropagation()">
+            <div class="channel-popup-mark">☏</div>
+            <h2 id="whatsapp-channel-title">GET STREAM HD UPDATES</h2>
+            <p>Join the official Lee Tech WhatsApp Channel for new features, live-channel updates, maintenance notices, and Stream HD announcements.</p>
+            <div class="channel-popup-actions">
+                <a class="btn" href="https://whatsapp.com/channel/0029Vb9GMft7YSd5GfsIyZ2" target="_blank" rel="noopener noreferrer" onclick="rememberWhatsAppChannelJoin()">JOIN CHANNEL</a>
+                <button class="btn alt" type="button" onclick="closeWhatsAppChannelPopup()">NOT NOW</button>
+            </div>
+            <button class="channel-popup-dismiss" type="button" onclick="dismissWhatsAppChannelPopup()">DON'T SHOW AGAIN</button>
+        </div>
+    </div>
 
     <div id="details-overlay" class="overlay-screen">
         <div class="details-modal" onclick="event.stopPropagation()">
@@ -2498,6 +2518,14 @@
         }
 
         function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3000); }
+        const WHATSAPP_CHANNEL_URL = 'https://whatsapp.com/channel/0029Vb9GMft7YSd5GfsIyZ2';
+        function closeWhatsAppChannelPopup() { document.getElementById('whatsapp-channel-popup').style.display = 'none'; }
+        function dismissWhatsAppChannelPopup() { localStorage.setItem('streamhd_whatsapp_channel_dismissed', '1'); closeWhatsAppChannelPopup(); }
+        function rememberWhatsAppChannelJoin() { localStorage.setItem('streamhd_whatsapp_channel_joined', '1'); closeWhatsAppChannelPopup(); }
+        function maybeShowWhatsAppChannelPopup() {
+            if (localStorage.getItem('streamhd_whatsapp_channel_dismissed') === '1' || localStorage.getItem('streamhd_whatsapp_channel_joined') === '1') return;
+            setTimeout(() => { const popup = document.getElementById('whatsapp-channel-popup'); if (popup) popup.style.display = 'flex'; }, 3400);
+        }
 
         document.getElementById('channel-list').addEventListener('keydown', event => {
             const cards = [...document.querySelectorAll('#channel-list .channel-card')];
@@ -2526,6 +2554,7 @@
                     setTimeout(() => splash.remove(), 500);
                 }
             }, 2500);
+            maybeShowWhatsAppChannelPopup();
         };
     </script>
 
