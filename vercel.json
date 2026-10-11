@@ -27,6 +27,16 @@
   ],
   "rewrites": [
     {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "developer.leetec.online"
+        }
+      ],
+      "destination": "/developer.html"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
