@@ -881,8 +881,8 @@
             <div id="yocinema-language-controls" style="display:none;align-items:center;gap:10px;margin:-8px 0 18px;padding:10px 12px;border:1px solid rgba(255,215,0,.25);border-radius:10px;background:rgba(255,215,0,.05);">
                 <label for="yocinema-playback-mode" style="font:700 .75rem 'Source Code Pro';color:#ddd;">PLAYBACK LANGUAGE</label>
                 <select id="yocinema-playback-mode" class="input-lg" style="padding:8px 10px;max-width:220px;" aria-label="YOCINEMA playback language">
-                    <option value="original">English / original audio</option>
-                    <option value="translated">Translated version</option>
+                    <option value="translated">English translated version</option>
+                    <option value="original">Original audio (provider language)</option>
                 </select>
             </div>
             <div id="api-results"></div>
@@ -2193,7 +2193,7 @@
 
         async function playYocinemaItem(movieId, title) {
             try {
-                const playbackMode = document.getElementById('yocinema-playback-mode')?.value === 'translated' ? 'translated' : 'original';
+                const playbackMode = document.getElementById('yocinema-playback-mode')?.value === 'original' ? 'original' : 'translated';
                 const result = await yocinemaFetch(`movies/${encodeURIComponent(movieId)}`);
                 const data = result && result.data ? result.data : result;
                 const episode = data && Array.isArray(data.episodes) && data.episodes.length ? data.episodes[0] : null;
@@ -2206,7 +2206,8 @@
                 const playable = new URL(streamUrl); playable.searchParams.set('streamToken', token); playable.searchParams.set('type', playbackMode);
                 closeOverlay('search-overlay');
                 playDirectMedia(playable.href, title, 'video');
-                setPlayerStatus(episode ? `YOCINEMA ${playbackMode} S${episode.season || 1} E${episode.episode || 1} playing` : `YOCINEMA ${playbackMode} playing`);
+                const languageLabel = playbackMode === 'translated' ? 'English translated' : 'original provider language';
+                setPlayerStatus(episode ? `YOCINEMA ${languageLabel} S${episode.season || 1} E${episode.episode || 1} playing` : `YOCINEMA ${languageLabel} playing`);
             } catch (error) {
                 showToast(`YOCINEMA PLAYBACK FAILED: ${apiErrorText(error.message)}`);
             }

@@ -26,7 +26,7 @@ Create an application in the [Jamendo developer portal](https://devportal.jamend
 
 ## YOCINEMA setup
 
-Add `YOCINEMA_API_KEY` to Vercel Project Settings for Production and Preview, then redeploy. Stream HD calls YOCINEMA only through `/api/yocinema`; the key is never sent to the browser. The **YOCINEMA** search button uses the catalog API, obtains a short-lived stream token server-side, and plays the returned authorized stream through the native HTML5 video player. The interface language is English by default, and YOCINEMA starts in **English / original audio** mode; **Translated version** remains available using the provider's documented `type=translated` and `type=original` options. Use YOCINEMA only for content and translations you are authorized to distribute.
+Add `YOCINEMA_API_KEY` to Vercel Project Settings for Production and Preview, then redeploy. Stream HD calls YOCINEMA only through `/api/yocinema`; the key is never sent to the browser. The **YOCINEMA** search button uses the catalog API, obtains a short-lived stream token server-side, and plays the returned authorized stream through the native HTML5 video player. The interface language is English by default, and YOCINEMA starts in **English translated version** mode (`type=translated`) so users do not unexpectedly receive the provider's local-language original audio. **Original audio (provider language)** remains available as an explicit alternative through `type=original`. The provider must supply the translation; Stream HD does not fabricate or dub audio. Use YOCINEMA only for content and translations you are authorized to distribute.
 
 ## Official Kenya TV channel search
 
