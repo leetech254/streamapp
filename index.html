@@ -168,6 +168,12 @@
         .source-switcher { display:none; gap:8px; flex-wrap:wrap; justify-content:center; width:100%; margin:10px 0 0; }
         .source-switcher .btn { min-height:38px; padding:8px 12px; font-size:.7rem; }
         .mobile-bottom-nav { display:none; }
+        .stream-nav { grid-column:1 / -1; display:flex; align-items:center; gap:8px; padding:8px; border:1px solid rgba(255,215,0,.2); border-radius:14px; background:rgba(8,8,8,.82); box-shadow:0 12px 28px rgba(0,0,0,.35); overflow-x:auto; scrollbar-width:none; }
+        .stream-nav::-webkit-scrollbar { display:none; }
+        .stream-nav button { flex:0 0 auto; display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:9px 15px; border:1px solid transparent; border-radius:10px; background:transparent; color:#a7a7a7; font:700 .72rem 'Orbitron',sans-serif; letter-spacing:.5px; cursor:pointer; transition:var(--transition); }
+        .stream-nav button:hover, .stream-nav button:focus-visible { color:var(--primary); border-color:rgba(255,215,0,.45); outline:none; }
+        .stream-nav button.active { color:#050505; background:var(--primary); box-shadow:0 0 18px rgba(255,215,0,.24); }
+        .stream-nav .nav-spacer { flex:1 0 8px; }
         .player-action { display:inline-flex; align-items:center; justify-content:center; min-height:36px; margin:6px 4px 0; padding:7px 12px; border:1px solid var(--primary); border-radius:8px; color:var(--primary); text-decoration:none; font:700 .72rem 'Orbitron',sans-serif; }
         .player-action:hover, .player-action:focus-visible { background:var(--primary); color:#000; outline:2px solid #fff; outline-offset:2px; }
         .channel-card:focus-visible, .btn:focus-visible, .filter-btn:focus-visible, .api-card:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid var(--primary); outline-offset:3px; }
@@ -178,6 +184,9 @@
             .header { padding: 12px 10px; flex-wrap: wrap; gap: 10px; border-bottom-color: var(--primary); }
             .branding { font-size: 1.22rem; letter-spacing: 1px; font-family:'Orbitron',sans-serif; }
             .header > div:last-child { margin-left:auto; }
+            .stream-nav { margin:0 -2px; border-radius:12px; }
+            .stream-nav button { min-height:36px; padding:8px 11px; font-size:.62rem; }
+            .stream-nav .nav-spacer { display:none; }
             .whatsapp-badge { font-size: .65rem; padding: 8px 10px; }
             .control-dock, .card { padding: 16px; }
             .btn-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
@@ -962,6 +971,16 @@
                 </div>
             </div>
         </header>
+        <nav class="stream-nav" aria-label="Stream HD primary navigation">
+            <button type="button" class="active" data-nav="home" onclick="navigateStream('home', this)"><span>⌂</span> HOME</button>
+            <button type="button" data-nav="discover" onclick="navigateStream('discover', this)"><span>⌕</span> DISCOVER</button>
+            <button type="button" data-nav="live" onclick="navigateStream('live', this)"><span>◉</span> LIVE TV</button>
+            <button type="button" data-nav="music" onclick="navigateStream('music', this)"><span>♫</span> MUSIC</button>
+            <button type="button" data-nav="yocinema" onclick="navigateStream('yocinema', this)"><span>▣</span> YOCINEMA</button>
+            <span class="nav-spacer"></span>
+            <button type="button" data-nav="library" onclick="navigateStream('library', this)"><span>▱</span> LIBRARY</button>
+            <button type="button" data-nav="settings" onclick="navigateStream('settings', this)"><span>⚙</span> ADMIN</button>
+        </nav>
 
         <main class="player-zone">
             <div class="stage-container" id="stage">
@@ -1042,10 +1061,10 @@
     </footer>
 
     <nav class="mobile-bottom-nav" aria-label="Mobile navigation">
-        <button type="button" onclick="mobileNav('home')"><strong>⌂</strong>HOME</button>
-        <button type="button" onclick="mobileNav('discover')"><strong>⌕</strong>DISCOVER</button>
-        <button type="button" onclick="mobileNav('vjs')"><strong>♙</strong>VJS</button>
-        <button type="button" onclick="mobileNav('library')"><strong>▱</strong>LIBRARY</button>
+        <button type="button" data-nav="home" onclick="mobileNav('home')"><strong>⌂</strong>HOME</button>
+        <button type="button" data-nav="discover" onclick="mobileNav('discover')"><strong>⌕</strong>DISCOVER</button>
+        <button type="button" data-nav="vjs" onclick="mobileNav('vjs')"><strong>♙</strong>VJS</button>
+        <button type="button" data-nav="library" onclick="mobileNav('library')"><strong>▱</strong>LIBRARY</button>
     </nav>
 
     <script>
@@ -1945,10 +1964,30 @@
             setTimeout(() => document.getElementById('search-input').focus(), 100);
         }
         function mobileNav(action) {
+            if (action === 'home') { navigateStream('home'); return; }
+            if (action === 'discover') { navigateStream('discover'); return; }
+            if (action === 'vjs') { navigateStream('vjs'); return; }
+            if (action === 'library') { navigateStream('library'); }
+        }
+        function setNavigationState(name) {
+            document.querySelectorAll('[data-nav]').forEach(button => button.classList.toggle('active', button.dataset.nav === name));
+            document.querySelectorAll('.mobile-bottom-nav button').forEach(button => button.classList.toggle('active', button.dataset.nav === name));
+        }
+        function navigateStream(action, sourceButton) {
+            setNavigationState(action);
             if (action === 'home') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-            if (action === 'discover') { openSearch('yocinema'); return; }
+            if (action === 'discover') { openSearch('youtube-video'); return; }
+            if (action === 'live') { setLibraryFilter('livetv'); return; }
+            if (action === 'music') { openSearch('music'); return; }
+            if (action === 'yocinema') { openSearch('yocinema'); return; }
             if (action === 'vjs') { openYocinemaVjs(); return; }
+            if (action === 'settings') { handleAdminLogin(); return; }
             if (action === 'library') { document.querySelector('.sidebar')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+        }
+        function setLibraryFilter(type) {
+            const button = [...document.querySelectorAll('.filter-btn')].find(item => item.getAttribute('onclick')?.includes(`setFilter('${type}'`));
+            if (button) setFilter(type, button);
+            document.querySelector('.sidebar')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
         async function openYocinemaVjs() {
             searchMode = 'yocinema';
@@ -2408,6 +2447,7 @@
             currentFilter = type;
             document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
             btnEl.classList.add('active');
+            setNavigationState(type === 'livetv' || type === 'kenya' ? 'live' : type === 'music' || type === 'audio' ? 'music' : 'library');
             renderChannels();
         }
 
