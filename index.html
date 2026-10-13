@@ -2077,12 +2077,37 @@
             document.getElementById('search-status').innerText = resBox.children.length ? `FOUND ${resBox.children.length} OFFICIAL KENYAN CHANNELS` : 'NO KENYAN CHANNEL MATCH — TRY CITIZEN, NTV, KTN, K24, KBC, TV47 OR MAISHA';
         }
 
+        function renderKenyaLiveSearchResults(results) {
+            const resBox = document.getElementById('api-results');
+            resBox.replaceChildren();
+            results.forEach(item => {
+                const videoId = String(item && item.id && item.id.videoId || '').trim();
+                if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return;
+                const title = String(item.snippet?.title || 'Official live broadcast').replace(/<[^>]+>/g, '');
+                const channelTitle = String(item.snippet?.channelTitle || 'Official Kenyan channel');
+                const img = safeWebUrl(item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url) || `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
+                const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play live ${title}`);
+                const image = document.createElement('img'); image.src = img; image.alt = `${channelTitle} live`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
+                const caption = document.createElement('span'); caption.textContent = `🔴 ${channelTitle} — LIVE NOW`; caption.title = title; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
+                card.append(image, caption);
+                card.addEventListener('click', () => { closeSearch(); hideAllPlayers(); playOfficialLive(videoId); });
+                resBox.appendChild(card);
+            });
+        }
+
         async function searchKenyaYouTubeChannels(query) {
             const term = String(query || '').trim();
             if (!term) return renderKenyaSearchResults('');
             const resBox = document.getElementById('api-results');
             try {
-                const data = await youtubeApiFetch(`${term} Kenya TV official live`);
+                const liveData = await youtubeApiFetch(`${term} Kenya TV official`, { live: '1', maxResults: 25 });
+                const liveResults = (liveData.items || []).filter(item => item && item.id && item.id.videoId && item.snippet && item.snippet.liveBroadcastContent === 'live');
+                if (liveResults.length) {
+                    renderKenyaLiveSearchResults(liveResults);
+                    document.getElementById('search-status').innerText = `FOUND ${liveResults.length} OFFICIAL LIVE BROADCASTS — PLAY INSIDE STREAM HD`;
+                    return;
+                }
+                const data = await youtubeApiFetch(`${term} Kenya TV official`);
                 const results = (data.items || []).filter(item => item && item.id && item.id.channelId && item.snippet);
                 resBox.replaceChildren();
                 results.forEach(item => {
@@ -2092,7 +2117,7 @@
                     const img = safeWebUrl(item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url) || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=222&color=ffd700&size=512`;
                     const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play live ${title}`);
                     const image = document.createElement('img'); image.src = img; image.alt = `${title} logo`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
-                    const caption = document.createElement('span'); caption.textContent = `${title} — OFFICIAL LIVE CHANNEL`; caption.title = description; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
+                    const caption = document.createElement('span'); caption.textContent = `${title} — OFFICIAL CHANNEL · CHECKING LIVE`; caption.title = description; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
                     card.append(image, caption);
                     card.addEventListener('click', () => {
                         const entry = { name: title.toUpperCase(), channelId, type: 'youtube', category: 'kenya', img, watched: false, fav: false, reqVip: false };
@@ -2100,7 +2125,7 @@
                     });
                     resBox.appendChild(card);
                 });
-                document.getElementById('search-status').innerText = results.length ? `FOUND ${results.length} OFFICIAL YOUTUBE TV CHANNELS` : 'NO OFFICIAL YOUTUBE TV CHANNELS FOUND';
+                document.getElementById('search-status').innerText = results.length ? `NO LIVE BROADCAST FOUND — ${results.length} OFFICIAL CHANNELS AVAILABLE TO CHECK` : 'NO ACTIVE LIVE BROADCASTS OR OFFICIAL CHANNELS FOUND';
             } catch (error) {
                 renderKenyaSearchResults(term);
                 document.getElementById('search-status').innerText = error.message === 'YOUTUBE_API_KEY is not configured' ? 'YOUTUBE CHANNEL SEARCH NEEDS YOUTUBE_API_KEY — SHOWING SAVED OFFICIAL KENYAN CHANNELS' : `YOUTUBE CHANNEL SEARCH FAILED — SHOWING SAVED OFFICIAL CHANNELS`;
