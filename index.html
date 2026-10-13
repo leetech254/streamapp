@@ -1344,10 +1344,13 @@
                 const activeItem = (Array.isArray(data.items) ? data.items : []).find(item => item && item.id && item.id.videoId && item.snippet && item.snippet.liveBroadcastContent === 'live');
                 const activeVideoId = activeItem && activeItem.id.videoId;
                 if (activeVideoId) {
-                    frame.style.display = 'block';
-                    frame.src = youtubeEmbedUrl(encodeURIComponent(activeVideoId));
-                    setPlayerStatus('Playing official live broadcast');
-                    showToast('OPENING LIVE TV');
+                    const title = activeItem.snippet && activeItem.snippet.title ? activeItem.snippet.title : `${channel.name} live broadcast`;
+                    const officialUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(activeVideoId)}`;
+                    setPlayerStatus(`${channel.name}: ${title}. Choose how to watch.`, [
+                        { label: '▶ PLAY LIVE IN STREAM', onClick: () => playOfficialLive(activeVideoId) },
+                        { label: 'WATCH ON YOUTUBE', href: officialUrl }
+                    ]);
+                    showToast('LIVE BROADCAST FOUND — CHOOSE PLAY OR WATCH');
                     return true;
                 }
                 youtubeChannelFallback(channel.name, channelId, channel.channelUrl || '');
@@ -1472,6 +1475,15 @@
             status.classList.toggle('playing', /^(Playing|Audio playing|Video playing|Live \/ HLS playing|Embedded page playing)/i.test(text) && actions.length === 0);
             status.replaceChildren(document.createTextNode(text));
             for (const action of actions) {
+                if (action && typeof action.onClick === 'function') {
+                    const button = document.createElement('button');
+                    button.className = 'player-action';
+                    button.type = 'button';
+                    button.textContent = String(action.label || 'PLAY');
+                    button.addEventListener('click', action.onClick);
+                    status.appendChild(button);
+                    continue;
+                }
                 const href = safeWebUrl(action && action.href);
                 if (!href) continue;
                 const link = document.createElement('a');
@@ -1479,6 +1491,17 @@
                 link.rel = 'noopener noreferrer'; link.textContent = String(action.label || 'OPEN LINK');
                 status.appendChild(link);
             }
+        }
+        function playOfficialLive(videoId) {
+            const id = String(videoId || '').trim();
+            if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return showToast('LIVE VIDEO IS NOT AVAILABLE');
+            const frame = document.getElementById('yt-frame');
+            if (!frame) return showToast('PLAYER IS NOT AVAILABLE');
+            hideAllPlayers();
+            frame.style.display = 'block';
+            frame.src = youtubeEmbedUrl(encodeURIComponent(id));
+            setPlayerStatus('Playing official live broadcast');
+            showToast('PLAYING LIVE TV');
         }
         function youtubeChannelLinks(channelId, channelUrl) {
             let base = '';
