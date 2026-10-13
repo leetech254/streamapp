@@ -1039,29 +1039,6 @@
             <button type="button" data-nav="settings" onclick="navigateStream('settings', this)"><span>⚙</span> ADMIN</button>
         </nav>
 
-        <section class="movie-box-search" aria-label="Search Stream HD">
-            <div class="movie-box-kicker">STREAM HD · MOVIE BOX</div>
-            <h1>What do you want to watch?</h1>
-            <p>Search movies, series, official live channels, music, and videos.</p>
-            <div class="movie-box-searchbar">
-                <select id="home-search-type" aria-label="Search category">
-                    <option value="movie">Movies</option>
-                    <option value="tv">Series</option>
-                    <option value="youtube-video">YouTube videos</option>
-                    <option value="kenya">Kenya TV</option>
-                    <option value="music">Music</option>
-                </select>
-                <input id="home-search-input" type="search" placeholder="Search title, channel, or artist..." autocomplete="off" onkeydown="if(event.key==='Enter') submitHomeSearch()">
-                <button class="btn btn-primary" type="button" onclick="submitHomeSearch()">⌕ SEARCH</button>
-            </div>
-            <div class="movie-box-shortcuts" aria-label="Browse shortcuts">
-                <button type="button" onclick="openSearch('movie')">🎬 Movies</button>
-                <button type="button" onclick="openSearch('tv')">📺 Series</button>
-                <button type="button" onclick="openSearch('kenya')">🇰🇪 Live TV</button>
-                <button type="button" onclick="openSearch('yocinema')">▣ YOCINEMA</button>
-            </div>
-        </section>
-
         <main class="player-zone">
             <div class="stage-container" id="stage">
                 <div id="loader" class="loader"></div>
@@ -2627,7 +2604,6 @@
             event.preventDefault(); cards[next].focus();
         });
         window.onload = async () => {
-            document.body.classList.add('search-first');
             await loadVercelPlayerConfig();
             if(isVIP) {
                 document.body.classList.add('vip-mode');
