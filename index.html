@@ -1346,6 +1346,22 @@
                     showToast('LIVE BROADCAST FOUND — PLAY INSIDE STREAM HD');
                     return true;
                 }
+                // A station can publish a playable “Live” video without YouTube
+                // exposing it through eventType=live. Use the same video search
+                // path as the Kenya search screen before reporting a miss.
+                const videoData = await youtubeApiFetch('live', { channelId, mode: 'video', maxResults: 25 });
+                const candidate = (Array.isArray(videoData.items) ? videoData.items : []).find(item => {
+                    const title = String(item && item.snippet && item.snippet.title || '');
+                    return item && item.id && item.id.videoId && /live|stream|watch/i.test(title);
+                });
+                if (candidate && candidate.id.videoId) {
+                    const candidateTitle = String(candidate.snippet && candidate.snippet.title || `${channel.name} Live`);
+                    setPlayerStatus(`${channel.name}: ${candidateTitle}. Choose Play to watch inside Stream HD.`, [
+                        { label: '▶ PLAY LIVE VIDEO IN STREAM', onClick: () => playOfficialLive(candidate.id.videoId) }
+                    ]);
+                    showToast('PLAYABLE LIVE VIDEO FOUND — PLAY INSIDE STREAM HD');
+                    return true;
+                }
                 youtubeChannelFallback(channel.name, channelId, channel.channelUrl || '');
                 return false;
             } catch (error) {
@@ -1514,7 +1530,7 @@
         }
         function youtubeChannelFallback(title, channelId, channelUrl) {
             hideAllPlayers();
-            setPlayerStatus(`${title || 'This channel'} has no embeddable live broadcast right now.`, [
+            setPlayerStatus(`${title || 'This channel'} has no playable Live video returned by YouTube yet.`, [
                 { label: '↻ CHECK AGAIN', onClick: () => { const ch = CHANNELS[activeIdx]; if (ch) openKenyaLiveChannel(ch, document.getElementById('yt-frame')); } }
             ]);
             showToast('NO ACTIVE LIVE BROADCAST');
