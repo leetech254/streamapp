@@ -196,7 +196,7 @@
         button, .channel-card, .api-card { touch-action: manipulation; }
         @media (max-width: 700px) {
             html, body { width:100%; max-width:100%; overflow-x:hidden; }
-            body { padding-bottom: 0; background: radial-gradient(circle at 50% -10%, rgba(255,215,0,.10), transparent 34%), #050505; }
+            body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); background: radial-gradient(circle at 50% -10%, rgba(255,215,0,.10), transparent 34%), #050505; }
             .app-container { width:100%; min-width:0; padding: 8px; gap: 12px; }
             .header { padding: 12px 10px; flex-wrap: wrap; gap: 10px; border-bottom-color: var(--primary); }
             .branding { font-size: 1.22rem; letter-spacing: 1px; font-family:'Orbitron',sans-serif; }
@@ -225,7 +225,12 @@
             .card-info { bottom:0; opacity:1; }
             .input-lg { font-size: 1rem; padding: 14px; }
             .search-box > div:first-of-type { flex-wrap: wrap; }
-            .mobile-bottom-nav { display:none !important; }
+            .mobile-bottom-nav { position:fixed; display:flex !important; align-items:stretch; gap:4px; left:0; right:0; bottom:0; z-index:100; width:100%; max-width:100%; overflow-x:auto; padding:7px 7px calc(7px + env(safe-area-inset-bottom)); background:rgba(8,8,8,.98); border-top:1px solid rgba(255,215,0,.28); box-shadow:0 -12px 32px rgba(0,0,0,.7); scrollbar-width:none; }
+            .mobile-bottom-nav::-webkit-scrollbar { display:none; }
+            .mobile-bottom-nav button { flex:1 0 74px; min-width:74px; border:0; border-radius:9px; background:transparent; color:#8b8b8b; font:600 .58rem 'Source Code Pro',monospace; padding:6px 3px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; white-space:nowrap; }
+            .mobile-bottom-nav button strong { color:var(--primary); font-size:1.05rem; line-height:1; }
+            .mobile-bottom-nav button.active, .mobile-bottom-nav button:active, .mobile-bottom-nav button:focus-visible { color:#050505; background:var(--primary); outline:none; }
+            .mobile-bottom-nav button.active strong { color:#050505; }
         }
         @media (max-width: 380px) {
             .header { padding-inline:8px; }
@@ -1117,12 +1122,15 @@
         </div>
     </footer>
 
-    <nav class="mobile-bottom-nav" aria-label="Mobile navigation">
-        <button type="button" data-nav="home" onclick="mobileNav('home')"><strong>⌂</strong>HOME</button>
-        <button type="button" data-nav="discover" onclick="mobileNav('discover')"><strong>⌕</strong>DISCOVER</button>
-        <button type="button" data-nav="vjs" onclick="mobileNav('vjs')"><strong>♙</strong>VJS</button>
-        <button type="button" data-nav="library" onclick="mobileNav('library')"><strong>▱</strong>LIBRARY</button>
-    </nav>
+        <nav class="mobile-bottom-nav" aria-label="Mobile navigation">
+        <button type="button" data-nav="home" onclick="mobileNav('home')"><strong>⌂</strong><span>HOME</span></button>
+        <button type="button" data-nav="discover" onclick="mobileNav('discover')"><strong>⌕</strong><span>DISCOVER</span></button>
+        <button type="button" data-nav="live" onclick="mobileNav('live')"><strong>◉</strong><span>LIVE TV</span></button>
+        <button type="button" data-nav="music" onclick="mobileNav('music')"><strong>♫</strong><span>MUSIC</span></button>
+        <button type="button" data-nav="yocinema" onclick="mobileNav('yocinema')"><strong>▣</strong><span>YOCINEMA</span></button>
+        <button type="button" data-nav="library" onclick="mobileNav('library')"><strong>▱</strong><span>LIBRARY</span></button>
+        <button type="button" data-nav="settings" onclick="mobileNav('settings')"><strong>⚙</strong><span>ADMIN</span></button>
+        </nav>
 
     <script>
         // PWA ENGINE
@@ -2011,6 +2019,10 @@
         function mobileNav(action) {
             if (action === 'home') { navigateStream('home'); return; }
             if (action === 'discover') { navigateStream('discover'); return; }
+            if (action === 'live') { navigateStream('live'); return; }
+            if (action === 'music') { navigateStream('music'); return; }
+            if (action === 'yocinema') { navigateStream('yocinema'); return; }
+            if (action === 'settings') { navigateStream('settings'); return; }
             if (action === 'vjs') { navigateStream('vjs'); return; }
             if (action === 'library') { navigateStream('library'); }
         }
