@@ -2011,7 +2011,7 @@
             document.getElementById('search-status').innerText = resBox.children.length ? `FOUND ${resBox.children.length} OFFICIAL KENYAN CHANNELS` : 'NO KENYAN CHANNEL MATCH — TRY CITIZEN, NTV, KTN, K24, KBC, TV47 OR MAISHA';
         }
 
-        function renderKenyaLiveSearchResults(results) {
+        function renderKenyaLiveSearchResults(results, badge = 'LIVE NOW') {
             const resBox = document.getElementById('api-results');
             resBox.replaceChildren();
             results.forEach(item => {
@@ -2022,7 +2022,7 @@
                 const img = safeWebUrl(item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url) || `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
                 const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play live ${title}`);
                 const image = document.createElement('img'); image.src = img; image.alt = `${channelTitle} live`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
-                const caption = document.createElement('span'); caption.textContent = `🔴 ${channelTitle} — LIVE NOW`; caption.title = title; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
+                const caption = document.createElement('span'); caption.textContent = `🔴 ${channelTitle} — ${badge}`; caption.title = title; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
                 card.append(image, caption);
                 card.addEventListener('click', () => { closeSearch(); hideAllPlayers(); playOfficialLive(videoId); });
                 resBox.appendChild(card);
@@ -2039,6 +2039,22 @@
                 if (liveResults.length) {
                     renderKenyaLiveSearchResults(liveResults);
                     document.getElementById('search-status').innerText = `FOUND ${liveResults.length} OFFICIAL LIVE BROADCASTS — PLAY INSIDE STREAM HD`;
+                    return;
+                }
+                // Some official stations publish a continuously playable video titled
+                // “Live” without exposing it through eventType=live. Keep the working
+                // Video search path available instead of incorrectly declaring failure.
+                const videoData = await youtubeApiFetch(`${term} Kenya`, { mode: 'video', maxResults: 25 });
+                const brand = term.toLowerCase().split(/\s+/).find(word => word.length > 2) || term.toLowerCase();
+                const liveLabelledVideos = (videoData.items || []).filter(item => {
+                    const snippet = item && item.snippet;
+                    if (!item || !item.id || !item.id.videoId || !snippet) return false;
+                    const text = `${snippet.channelTitle || ''} ${snippet.title || ''}`.toLowerCase();
+                    return text.includes(brand) && /live|24\s*\/\s*7|stream|watch now/i.test(text);
+                });
+                if (liveLabelledVideos.length) {
+                    renderKenyaLiveSearchResults(liveLabelledVideos, 'PLAYABLE LIVE VIDEO');
+                    document.getElementById('search-status').innerText = `FOUND ${liveLabelledVideos.length} PLAYABLE OFFICIAL LIVE VIDEOS — PLAY INSIDE STREAM HD`;
                     return;
                 }
                 const data = await youtubeApiFetch(`${term} Kenya TV official`);
