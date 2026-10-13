@@ -21,6 +21,7 @@ function clearSession(res) { res.setHeader('Set-Cookie', 'stream_dev_session=; P
 function publicUser(user) { return user ? { id: String(user._id), email: user.email, name: user.name, createdAt: user.createdAt } : null; }
 function cleanEmail(value) { return String(value || '').trim().toLowerCase(); }
 function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 160; }
+function normalizeKenyanPhone(value) { const raw = String(value || '').replace(/[\s()-]/g, ''); if (/^0[17]\d{8}$/.test(raw)) return `254${raw.slice(1)}`; if (/^\+254[17]\d{8}$/.test(raw)) return raw.slice(1); if (/^254[17]\d{8}$/.test(raw)) return raw; return ''; }
 
 module.exports = async function developerApi(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -49,6 +50,19 @@ module.exports = async function developerApi(req, res) {
     }
     const session = readSession(req); if (!session) return json(res, 401, { error: 'Sign in is required.' });
     const user = await users.findOne({ _id: new (require('mongodb').ObjectId)(session.sub) }); if (!user) return json(res, 401, { error: 'Developer account not found.' });
+    if (action === 'wallet' && parts[1] === 'topup' && req.method === 'POST') {
+      const apiKey = String(process.env.LEETEC_API_KEY || '').trim();
+      if (!apiKey) return json(res, 503, { error: 'Leetec top-up is not configured on the server yet', code: 'LEETEC_API_KEY_MISSING' });
+      const phoneNumber = normalizeKenyanPhone(body.phoneNumber); const amount = Number(body.amount); const accountReference = String(body.accountReference || '').trim().slice(0, 40);
+      if (!phoneNumber) return json(res, 400, { error: 'Enter a valid Kenyan Safaricom number, for example 0712345678', code: 'PHONE_INVALID' });
+      if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount < 10 || amount > 100000) return json(res, 400, { error: 'Enter a whole KES amount between 10 and 100,000', code: 'AMOUNT_INVALID' });
+      if (!accountReference) return json(res, 400, { error: 'A top-up reference is required', code: 'REFERENCE_MISSING' });
+      const base = String(process.env.LEETEC_API_BASE_URL || 'https://leetec.online').replace(/\/$/, '');
+      const upstream = await fetch(`${base}/api/v1/stkpush`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ phoneNumber, amount, accountReference }) });
+      const text = await upstream.text(); let payload; try { payload = JSON.parse(text); } catch { payload = { message: text }; }
+      if (!upstream.ok) return json(res, upstream.status, { error: String(payload.message || payload.error || 'Leetec rejected the top-up request'), code: 'LEETEC_TOPUP_REJECTED' });
+      return json(res, 200, { ok: true, provider: 'leetec', phoneNumber, amount, accountReference, ...payload });
+    }
     if (action === 'keys' && req.method === 'GET') { const list = await keys.find({ userId: user._id }, { projection: { keyHash: 0 } }).sort({ createdAt: -1 }).toArray(); return json(res, 200, { user: publicUser(user), keys: list.map(k => ({ id: String(k._id), label: k.label, prefix: k.prefix, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt || null, revokedAt: k.revokedAt || null })) }); }
     if (action === 'keys' && req.method === 'POST') { const raw = `sk_stream_${randomString(32)}`; const doc = { userId: user._id, label: String(body.label || 'Stream API key').trim().slice(0, 80) || 'Stream API key', prefix: raw.slice(0, 18), keyHash: hash(raw), createdAt: new Date(), lastUsedAt: null, revokedAt: null }; const result = await keys.insertOne(doc); return json(res, 201, { key: raw, id: String(result.insertedId), warning: 'Copy this key now. The full key will not be shown again.' }); }
     if (action === 'keys' && req.method === 'DELETE') { const id = String(parts[1] || ''); if (!/^[a-f0-9]{24}$/.test(id)) return json(res, 400, { error: 'Invalid key ID.' }); const result = await keys.updateOne({ _id: new (require('mongodb').ObjectId)(id), userId: user._id, revokedAt: null }, { $set: { revokedAt: new Date() } }); return json(res, 200, { ok: result.modifiedCount === 1 }); }
