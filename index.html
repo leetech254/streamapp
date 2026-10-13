@@ -1626,7 +1626,9 @@
             } else {
                 video.src = url; video.load();
             }
-            video.play().catch(() => setPlayerStatus('Video is ready. Press Play to start (autoplay may be blocked).'));
+            video.play().catch(() => setPlayerStatus('English video is ready. Tap Play to start playback.', [
+                { label: '▶ PLAY VIDEO', onClick: () => video.play().then(() => setPlayerStatus('Video playing')).catch(() => showToast('PRESS THE VIDEO PLAYER PLAY CONTROL')) }
+            ]));
             return true;
         }
         function playDirectMedia(rawUrl, title = 'Direct media', forcedKind = '') {
@@ -1997,6 +1999,10 @@
             document.getElementById('search-status').innerText = type === 'kenya' ? 'READY — SEARCH OFFICIAL KENYAN CHANNELS' : type === 'archive' ? 'SEARCHING INTERNET ARCHIVE PRELINGER COLLECTION...' : type === 'yocinema' ? 'LOADING YOCINEMA CATALOG...' : type === 'youtube-audio' ? 'SEARCHING OFFICIAL YOUTUBE AUDIO...' : type === 'youtube-video' ? 'SEARCHING OFFICIAL YOUTUBE VIDEOS...' : 'LOADING TRENDING TODAY...';
             const yocinemaLanguageControls = document.getElementById('yocinema-language-controls');
             if (yocinemaLanguageControls) yocinemaLanguageControls.style.display = type === 'yocinema' ? 'flex' : 'none';
+            if (type === 'yocinema') {
+                const languageSelect = document.getElementById('yocinema-playback-mode');
+                if (languageSelect) languageSelect.value = 'translated';
+            }
             document.getElementById('search-overlay').style.display = 'flex';
 
             if (type === 'kenya') renderKenyaSearchResults(''); else if (type === 'archive') fetchArchiveResults(''); else if (type === 'yocinema') fetchYocinemaResults(''); else if (type === 'youtube-audio') fetchYouTubeVideoResults('official music audio'); else if (type === 'youtube-video') fetchYouTubeVideoResults('official videos'); else fetchTrending(type);
@@ -2314,7 +2320,12 @@
                 const languageLabel = playbackMode === 'translated' ? 'English translated' : 'original provider language';
                 setPlayerStatus(episode ? `YOCINEMA ${languageLabel} S${episode.season || 1} E${episode.episode || 1} playing` : `YOCINEMA ${languageLabel} playing`);
             } catch (error) {
-                showToast(`YOCINEMA PLAYBACK FAILED: ${apiErrorText(error.message)}`);
+                const message = apiErrorText(error.message);
+                closeOverlay('search-overlay');
+                setPlayerStatus(`English translated playback could not start for ${title}.`, [
+                    { label: '↻ RETRY ENGLISH PLAYBACK', onClick: () => playYocinemaItem(movieId, title) }
+                ]);
+                showToast(`YOCINEMA PLAYBACK FAILED: ${message}`);
             }
         }
 
