@@ -1496,9 +1496,17 @@
             ] : [];
         }
         function youtubeChannelFallback(title, channelId, channelUrl) {
-            const actions = youtubeChannelLinks(channelId, channelUrl);
-            setPlayerStatus('No live programme is currently available. Open the official channel to watch when its next broadcast starts.', actions);
-            showToast('NO LIVE PROGRAMME CURRENTLY AVAILABLE');
+            const frame = document.getElementById('yt-frame');
+            const embedUrl = youtubeChannelEmbedUrl(channelId);
+            if (frame && embedUrl) {
+                frame.style.display = 'block';
+                frame.src = embedUrl;
+                setPlayerStatus('Playing official channel');
+                showToast('OPENING OFFICIAL CHANNEL');
+                return true;
+            }
+            // Keep the player area clean when a channel has no embeddable source.
+            setPlayerStatus('');
             return false;
         }
         function youtubeChannelEmbedUrl(channelId) {
