@@ -876,11 +876,6 @@
                     <label style="color:#aaa;font-size:.78rem;">Season <select id="tv-season-select" class="paste-input"></select></label>
                     <label style="color:#aaa;font-size:.78rem;">Episode <select id="tv-episode-select" class="paste-input"></select></label>
                 </div>
-                <div id="provider-panel" style="margin:18px 0;padding:14px;border:1px solid rgba(255,215,0,.35);border-radius:12px;background:rgba(0,0,0,.28);">
-                    <div id="provider-heading" style="font-family:'Orbitron';color:var(--primary);font-size:.78rem;letter-spacing:1px;margin-bottom:8px;">LEGAL WATCH OPTIONS</div>
-                    <div id="provider-list" style="font-size:.8rem;color:#aaa;">Loading official providers...</div>
-                </div>
-
                 <div class="btn-grid" style="grid-template-columns: 1fr 1fr;">
                     <button id="det-play-btn" class="btn btn-primary" onclick="playCurrentDetails()">▶️ PLAY FULL</button>
                     <button class="btn" style="border-color: #00f3ff; color: #00f3ff;" onclick="trailerCurrentDetails()">📺 TRAILER</button>
@@ -1776,81 +1771,6 @@
             return /^[A-Za-z]{2}$/.test(localeRegion) ? localeRegion.toUpperCase() : 'US';
         }
 
-        function chooseProviderRegion(results) {
-            if (!results || typeof results !== 'object') return null;
-            const preferred = [getWatchRegion(), 'KE', 'US', 'GB', 'CA', 'AU', 'ZA', 'NG'];
-            const score = value => {
-                if (!value || typeof value !== 'object') return -1;
-                if (Array.isArray(value.free) && value.free.length) return 100;
-                if (Array.isArray(value.ads) && value.ads.length) return 90;
-                if (Array.isArray(value.flatrate) && value.flatrate.length) return 70;
-                if (Array.isArray(value.rent) && value.rent.length) return 30;
-                if (Array.isArray(value.buy) && value.buy.length) return 20;
-                return 0;
-            };
-            const ranked = preferred.map((region, order) => ({ code: region, data: results[region], score: score(results[region]), order })).filter(item => item.data);
-            const preferredFree = ranked.filter(item => item.score >= 70).sort((a, b) => b.score - a.score || a.order - b.order)[0];
-            if (preferredFree) return preferredFree;
-            const globalFree = Object.entries(results).map(([code, data]) => ({ code, data, score: score(data) })).filter(item => item.score >= 70).sort((a, b) => b.score - a.score)[0];
-            if (globalFree) return globalFree;
-            const first = ranked[0] || Object.entries(results).map(([code, data]) => ({ code, data, score: score(data) })).find(item => item.data && item.score >= 0);
-            return first || null;
-        }
-
-        async function loadWatchProviders(ch, entryIndex) {
-            const list = document.getElementById('provider-list');
-            if (!list) return;
-            list.textContent = 'Loading official providers...';
-            try {
-                const data = await tmdbFetch(`${ch.cType}/${encodeURIComponent(ch.tmdbId)}/watch/providers`);
-                if (activeDetailsEntry !== entryIndex) return;
-                const selected = chooseProviderRegion(data.results);
-                const region = selected ? selected.code : getWatchRegion();
-                const regionData = selected && selected.data;
-                const heading = document.getElementById('provider-heading');
-                if (heading) heading.textContent = `LEGAL WATCH OPTIONS — ${region}`;
-                if (!regionData) {
-                    list.textContent = 'No official streaming providers are listed in the available regions.';
-                    return;
-                }
-                const hasFreeOrSubscription = ['free', 'ads', 'flatrate'].some(key => Array.isArray(regionData[key]) && regionData[key].length);
-                const groups = hasFreeOrSubscription
-                    ? [['free', 'FREE'], ['ads', 'FREE WITH ADS'], ['flatrate', 'SUBSCRIPTION']]
-                    : [['rent', 'RENT'], ['buy', 'BUY']];
-                const seen = new Set();
-                const providers = [];
-                groups.forEach(([key, label]) => (regionData[key] || []).forEach(provider => {
-                    const id = String(provider.provider_id || provider.provider_name);
-                    if (seen.has(id)) return;
-                    seen.add(id); providers.push({ ...provider, label });
-                }));
-                list.replaceChildren();
-                if (!providers.length) {
-                    list.textContent = `No free or official providers are listed for ${region}.`;
-                    return;
-                }
-                const intro = document.createElement('div');
-                intro.textContent = hasFreeOrSubscription ? 'Free and low-friction official options are shown first. Availability is supplied by TMDB/JustWatch.' : 'No free or subscription option is listed here; these official rent/buy options are the remaining matches.';
-                intro.style.cssText = 'margin-bottom:10px;color:#aaa;line-height:1.4';
-                list.appendChild(intro);
-                const grid = document.createElement('div');
-                grid.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap';
-                providers.forEach(provider => {
-                    const link = document.createElement('a');
-                    link.href = regionData.link || '#'; link.target = '_blank'; link.rel = 'noopener noreferrer';
-                    link.textContent = `${provider.label}: ${provider.provider_name}`;
-                    link.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid rgba(0,243,255,.55);border-radius:8px;color:#00f3ff;text-decoration:none;font-size:.72rem';
-                    if (provider.logo_path) {
-                        const logo = document.createElement('img'); logo.src = `https://image.tmdb.org/t/p/w92${provider.logo_path}`; logo.alt = ''; logo.width = 22; logo.height = 22; logo.style.borderRadius = '5px'; link.prepend(logo);
-                    }
-                    grid.appendChild(link);
-                });
-                list.appendChild(grid);
-            } catch (error) {
-                if (activeDetailsEntry === entryIndex) list.textContent = 'Official provider availability is temporarily unavailable.';
-            }
-        }
-
         async function openDetails(idx) {
             const ch = CHANNELS[idx];
             if(ch.reqVip && !isVIP) return showToast('VIP ACCESS REQUIRED');
@@ -1866,7 +1786,6 @@
             document.getElementById('tv-episode-picker').hidden = ch.cType !== 'tv';
             document.getElementById('tv-episode-picker').style.display = ch.cType === 'tv' ? 'flex' : 'none';
             document.querySelector('.details-modal').style.backgroundImage = '';
-            document.getElementById('provider-list').innerText = 'Loading official providers...';
             const fullPlayButton = document.getElementById('det-play-btn');
             if (fullPlayButton) {
                 fullPlayButton.disabled = false;
@@ -1874,8 +1793,6 @@
             }
 
             document.getElementById('details-overlay').style.display = 'flex';
-            loadWatchProviders(ch, idx);
-
             try {
                 const data = await tmdbFetch(`${ch.cType}/${encodeURIComponent(ch.tmdbId)}`, { append_to_response: 'credits' });
 
@@ -1937,6 +1854,37 @@
             } catch { setPlayerStatus(`Selected ${ch.name} — Season ${seasonNumber}, Episode ${episodeNumber}. Episode video metadata is unavailable.`); }
         }
 
+        async function playYouTubeFullMovie(ch) {
+            const title = String(ch && ch.name || '').trim();
+            if (!title) return false;
+            setPlayerStatus(`Searching YouTube for an embeddable full-length upload of ${title}…`);
+            try {
+                const data = await youtubeApiFetch(`${title} full movie`, { mode: 'video', maxResults: 25 });
+                const blockedWords = /trailer|teaser|clip|shorts?|รีวิว|review|reaction|interview|behind the scenes/i;
+                const fullWords = /full movie|full film|complete movie|complete film|entire movie|official movie/i;
+                const candidates = (Array.isArray(data.items) ? data.items : [])
+                    .filter(item => item && item.id && item.id.videoId && item.snippet)
+                    .filter(item => !blockedWords.test(String(item.snippet.title || '')))
+                    .filter(item => fullWords.test(String(item.snippet.title || '')));
+                const video = candidates[0];
+                if (!video) {
+                    setPlayerStatus(`No embeddable full-length YouTube upload was found for ${title}. Use the Trailer button to view official clips.`);
+                    showToast('NO FULL-LENGTH YOUTUBE UPLOAD FOUND');
+                    return false;
+                }
+                const videoId = String(video.id.videoId);
+                const context = { ...activePlayerContext, tmdb_id: ch.tmdbId, type: ch.cType || 'movie', title, youtube_key: videoId };
+                const template = 'https://www.youtube-nocookie.com/embed/{youtube_key}?autoplay=1&rel=0&playsinline=1&enablejsapi=1';
+                playConfiguredSource({ id: 'youtube-full', label: 'Official YouTube Full-Length', template, url: expandPlayerTemplate(template, context) }, context);
+                showToast('PLAYING FULL-LENGTH YOUTUBE VIDEO IN STREAM HD');
+                return true;
+            } catch (error) {
+                setPlayerStatus(`YouTube full-length search is unavailable for ${title}.`);
+                showToast('YOUTUBE FULL-LENGTH SEARCH FAILED');
+                return false;
+            }
+        }
+
         async function playCurrentDetails() {
             const ch = CHANNELS[activeDetailsEntry];
             if (!ch) return;
@@ -1951,22 +1899,8 @@
                 switchSource(activeDetailsEntry);
                 return;
             }
-            if (ch.tmdbId && (ch.cType === 'movie' || ch.cType === 'tv')) {
-                try {
-                    const data = await tmdbFetch(`${ch.cType}/${encodeURIComponent(ch.tmdbId)}/videos`);
-                    const trailer = (data.results || []).find(video => video.site === 'YouTube' && video.type === 'Trailer')
-                        || (data.results || []).find(video => video.site === 'YouTube' && video.type === 'Clip');
-                    if (trailer && trailer.key) {
-                        const trailerContext = { ...context, title: `${ch.name} trailer`, youtube_key: trailer.key };
-                        const template = 'https://www.youtube-nocookie.com/embed/{youtube_key}?autoplay=1&rel=0&playsinline=1&enablejsapi=1';
-                        playConfiguredSource({ id: 'youtube', label: 'Official YouTube Trailer', template, url: expandPlayerTemplate(template, trailerContext) }, trailerContext);
-                        return;
-                    }
-                } catch (error) {
-                    console.warn('TMDB video fallback unavailable', error);
-                }
-            }
-            setPlayerStatus(`No in-page source is available for ${ch.name}. Add an authorized provider template in Vercel or Admin, then try again.`);
+            if (ch.tmdbId && (ch.cType === 'movie' || ch.cType === 'tv')) return playYouTubeFullMovie(ch);
+            setPlayerStatus(`No in-page source is available for ${ch.name}.`);
             showToast('NO IN-PAGE SOURCE AVAILABLE');
         }
 
