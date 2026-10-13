@@ -1343,10 +1343,9 @@
                 const activeVideoId = activeItem && activeItem.id.videoId;
                 if (activeVideoId) {
                     const title = activeItem.snippet && activeItem.snippet.title ? activeItem.snippet.title : `${channel.name} live broadcast`;
-                    setPlayerStatus(`${channel.name}: ${title}. Choose how to watch.`, [
-                        { label: '▶ PLAY LIVE IN STREAM', onClick: () => playOfficialLive(activeVideoId) }
-                    ]);
-                    showToast('LIVE BROADCAST FOUND — PLAY INSIDE STREAM HD');
+                    playOfficialLive(activeVideoId);
+                    setPlayerStatus(`Playing ${channel.name}: ${title}`);
+                    showToast('LIVE BROADCAST PLAYING INSIDE STREAM HD');
                     return true;
                 }
                 // A station can publish a playable “Live” video without YouTube
@@ -1359,10 +1358,9 @@
                 });
                 if (candidate && candidate.id.videoId) {
                     const candidateTitle = String(candidate.snippet && candidate.snippet.title || `${channel.name} Live`);
-                    setPlayerStatus(`${channel.name}: ${candidateTitle}. Choose Play to watch inside Stream HD.`, [
-                        { label: '▶ PLAY LIVE VIDEO IN STREAM', onClick: () => playOfficialLive(candidate.id.videoId) }
-                    ]);
-                    showToast('PLAYABLE LIVE VIDEO FOUND — PLAY INSIDE STREAM HD');
+                    playOfficialLive(candidate.id.videoId);
+                    setPlayerStatus(`Playing ${channel.name}: ${candidateTitle}`);
+                    showToast('PLAYABLE LIVE VIDEO PLAYING INSIDE STREAM HD');
                     return true;
                 }
                 youtubeChannelFallback(channel.name, channelId, channel.channelUrl || '');
