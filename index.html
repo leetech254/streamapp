@@ -1340,8 +1340,9 @@
             if (!channelId) return youtubeChannelFallback(channel.name, '', channel.channelUrl || '');
             setPlayerStatus('Checking official live broadcast…');
             try {
-                const data = await youtubeApiFetch('', { channelId, live: '1', maxResults: 1 });
-                const activeVideoId = data.items && data.items[0] && data.items[0].id && data.items[0].id.videoId;
+                const data = await youtubeApiFetch('', { channelId, live: '1', maxResults: 5 });
+                const activeItem = (Array.isArray(data.items) ? data.items : []).find(item => item && item.id && item.id.videoId && item.snippet && item.snippet.liveBroadcastContent === 'live');
+                const activeVideoId = activeItem && activeItem.id.videoId;
                 if (activeVideoId) {
                     frame.style.display = 'block';
                     frame.src = youtubeEmbedUrl(encodeURIComponent(activeVideoId));
@@ -1496,17 +1497,10 @@
             ] : [];
         }
         function youtubeChannelFallback(title, channelId, channelUrl) {
-            const frame = document.getElementById('yt-frame');
-            const embedUrl = youtubeChannelEmbedUrl(channelId);
-            if (frame && embedUrl) {
-                frame.style.display = 'block';
-                frame.src = embedUrl;
-                setPlayerStatus('Playing official channel');
-                showToast('OPENING OFFICIAL CHANNEL');
-                return true;
-            }
-            // Keep the player area clean when a channel has no embeddable source.
-            setPlayerStatus('');
+            hideAllPlayers();
+            const links = youtubeChannelLinks(channelId, channelUrl);
+            setPlayerStatus(`${title || 'This channel'} has no embeddable live broadcast right now.`, links);
+            showToast('NO ACTIVE LIVE BROADCAST');
             return false;
         }
         function youtubeChannelEmbedUrl(channelId) {

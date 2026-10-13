@@ -28,7 +28,12 @@ module.exports = async function youtubeHandler(req, res) {
   };
   if (query) params.q = query;
   if (channelId) params.channelId = channelId;
-  if (liveOnly) params.eventType = 'live';
+  if (liveOnly) {
+    params.eventType = 'live';
+    // Exclude broadcasts that appear in search but render as unavailable in an iframe.
+    params.videoEmbeddable = 'true';
+    params.videoSyndicated = 'true';
+  }
   if (videoMode) { params.videoEmbeddable = 'true'; params.videoSyndicated = 'true'; }
   url.search = new URLSearchParams(params).toString();
 
@@ -38,7 +43,7 @@ module.exports = async function youtubeHandler(req, res) {
     let body;
     try { body = JSON.parse(text); } catch { body = { error: text }; }
     if (!upstream.ok) return errorResponse(res, upstream.status, body.error?.message || 'YouTube API request failed', 'YOUTUBE_API_ERROR');
-    res.setHeader('Cache-Control', 'public, max-age=120, s-maxage=300');
+    res.setHeader('Cache-Control', liveOnly ? 'no-store, max-age=0' : 'public, max-age=120, s-maxage=300');
     return res.status(200).json(body);
   } catch (error) {
     return errorResponse(res, 502, error && error.message ? error.message : 'YouTube API unavailable', 'YOUTUBE_UPSTREAM_ERROR');
