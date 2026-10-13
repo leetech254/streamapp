@@ -1405,7 +1405,8 @@
                 youtubeChannelFallback(channel.name, channelId, channel.channelUrl || '');
                 return false;
             } catch (error) {
-                youtubeChannelFallback(channel.name, channelId, channel.channelUrl || '');
+                const isQuota = /quota|rate.?limit|429|YOUTUBE_API_ERROR/i.test(String(error.message || ''));
+                youtubeChannelFallback(channel.name, channelId, channel.channelUrl || '', isQuota ? 'YouTube live verification is temporarily rate-limited. Try again later.' : '');
                 return false;
             }
         }
@@ -1568,9 +1569,9 @@
                 { label: 'BROWSE CHANNEL VIDEOS', href: `${base}/videos` }
             ] : [];
         }
-        function youtubeChannelFallback(title, channelId, channelUrl) {
+        function youtubeChannelFallback(title, channelId, channelUrl, message = '') {
             hideAllPlayers();
-            setPlayerStatus(`${title || 'This channel'} has no playable Live video returned by YouTube yet.`, [
+            setPlayerStatus(message || `${title || 'This channel'} has no playable Live video returned by YouTube yet.`, [
                 { label: '↻ CHECK AGAIN', onClick: () => { const ch = CHANNELS[activeIdx]; if (ch) openKenyaLiveChannel(ch, document.getElementById('yt-frame')); } }
             ]);
             showToast('NO ACTIVE LIVE BROADCAST');
@@ -2067,7 +2068,7 @@
             }
         }
 
-        function renderKenyaSearchResults(query) {
+        function renderKenyaSearchResults(query, statusMessage = '') {
             const resBox = document.getElementById('api-results');
             const needle = String(query || '').trim().toLowerCase();
             resBox.replaceChildren();
@@ -2079,7 +2080,7 @@
                     const caption = document.createElement('span'); caption.textContent = `${item.name} — OFFICIAL CHANNEL`; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
                     card.append(image, caption); card.addEventListener('click', () => { closeOverlay('search-overlay'); switchSource(index); }); resBox.appendChild(card);
                 });
-            document.getElementById('search-status').innerText = resBox.children.length ? `FOUND ${resBox.children.length} OFFICIAL KENYAN CHANNELS` : 'NO KENYAN CHANNEL MATCH — TRY CITIZEN, NTV, KTN, K24, KBC, TV47 OR MAISHA';
+            document.getElementById('search-status').innerText = statusMessage || (resBox.children.length ? `FOUND ${resBox.children.length} OFFICIAL KENYAN CHANNELS` : 'NO KENYAN CHANNEL MATCH — TRY CITIZEN, NTV, KTN, K24, KBC, TV47 OR MAISHA');
         }
 
         function renderKenyaLiveSearchResults(results, badge = 'LIVE NOW') {
@@ -2104,9 +2105,16 @@
             const term = String(query || '').trim();
             if (!term) return renderKenyaSearchResults('');
             const resBox = document.getElementById('api-results');
+            const normalizedTerm = term.toLowerCase().replace(/\b(kenya|kenyan|tv|official|live|channel)\b/g, ' ').replace(/\s+/g, ' ').trim();
+            const localMatches = CHANNELS.filter(item => item && item.category === 'kenya' && item.name.toLowerCase().includes(normalizedTerm || term.toLowerCase()));
             try {
                 const liveData = await youtubeApiFetch(`${term} Kenya TV official`, { live: '1', maxResults: 25 });
-                const liveResults = (liveData.items || []).filter(item => item && item.id && item.id.videoId && item.snippet && item.snippet.liveBroadcastContent === 'live');
+                const matchTokens = (normalizedTerm || term).toLowerCase().split(/\s+/).filter(token => token.length > 2);
+                const matchesTerm = item => {
+                    const text = `${item?.snippet?.channelTitle || ''} ${item?.snippet?.title || ''}`.toLowerCase();
+                    return !matchTokens.length || matchTokens.some(token => text.includes(token));
+                };
+                const liveResults = (liveData.items || []).filter(item => item && item.id && item.id.videoId && item.snippet && item.snippet.liveBroadcastContent === 'live' && matchesTerm(item));
                 if (liveResults.length) {
                     renderKenyaLiveSearchResults(liveResults);
                     document.getElementById('search-status').innerText = `FOUND ${liveResults.length} OFFICIAL LIVE BROADCASTS — PLAY INSIDE STREAM HD`;
@@ -2116,12 +2124,11 @@
                 // “Live” without exposing it through eventType=live. Keep the working
                 // Video search path available instead of incorrectly declaring failure.
                 const videoData = await youtubeApiFetch(`${term} Kenya`, { mode: 'video', maxResults: 25 });
-                const brand = term.toLowerCase().split(/\s+/).find(word => word.length > 2) || term.toLowerCase();
                 const liveLabelledVideos = (videoData.items || []).filter(item => {
                     const snippet = item && item.snippet;
                     if (!item || !item.id || !item.id.videoId || !snippet) return false;
                     const text = `${snippet.channelTitle || ''} ${snippet.title || ''}`.toLowerCase();
-                    return text.includes(brand) && /live|24\s*\/\s*7|stream|watch now/i.test(text);
+                    return matchesTerm(item) && /live|24\s*\/\s*7|stream|watch now/i.test(text);
                 });
                 if (liveLabelledVideos.length) {
                     renderKenyaLiveSearchResults(liveLabelledVideos, 'PLAYABLE LIVE VIDEO');
@@ -2148,8 +2155,13 @@
                 });
                 document.getElementById('search-status').innerText = results.length ? `NO LIVE BROADCAST FOUND — ${results.length} OFFICIAL CHANNELS AVAILABLE TO CHECK` : 'NO ACTIVE LIVE BROADCASTS OR OFFICIAL CHANNELS FOUND';
             } catch (error) {
-                renderKenyaSearchResults(term);
-                document.getElementById('search-status').innerText = error.message === 'YOUTUBE_API_KEY is not configured' ? 'YOUTUBE CHANNEL SEARCH NEEDS YOUTUBE_API_KEY — SHOWING SAVED OFFICIAL KENYAN CHANNELS' : `YOUTUBE CHANNEL SEARCH FAILED — SHOWING SAVED OFFICIAL CHANNELS`;
+                const isQuota = /quota|rate.?limit|429|YOUTUBE_API_ERROR/i.test(String(error.message || ''));
+                if (localMatches.length) {
+                    renderKenyaSearchResults(term, isQuota ? `YOUTUBE SEARCH RATE-LIMITED — SHOWING ${localMatches.length} SAVED OFFICIAL KENYAN CHANNEL${localMatches.length === 1 ? '' : 'S'}` : 'YOUTUBE SEARCH TEMPORARILY UNAVAILABLE — SHOWING SAVED OFFICIAL KENYAN CHANNELS');
+                } else {
+                    renderKenyaSearchResults(term);
+                    document.getElementById('search-status').innerText = error.message === 'YOUTUBE_API_KEY is not configured' ? 'YOUTUBE SEARCH NEEDS YOUTUBE_API_KEY — SHOWING SAVED OFFICIAL KENYAN CHANNELS' : isQuota ? 'YOUTUBE SEARCH RATE-LIMITED — TRY AGAIN LATER OR CHOOSE A SAVED CHANNEL' : 'YOUTUBE SEARCH FAILED — TRY AGAIN OR USE A SAVED OFFICIAL CHANNEL';
+                }
             }
         }
 
