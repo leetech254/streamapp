@@ -177,6 +177,19 @@
         .stream-nav button:hover, .stream-nav button:focus-visible { color:var(--primary); border-color:rgba(255,215,0,.45); outline:none; }
         .stream-nav button.active { color:#050505; background:var(--primary); box-shadow:0 0 18px rgba(255,215,0,.24); }
         .stream-nav .nav-spacer { flex:1 0 8px; }
+        .movie-box-search { grid-column:1 / -1; padding:clamp(22px,4vw,48px); border:1px solid rgba(255,215,0,.2); border-radius:20px; background:linear-gradient(135deg,rgba(26,26,26,.96),rgba(5,5,5,.92)); box-shadow:0 18px 45px rgba(0,0,0,.45); }
+        .movie-box-kicker { color:var(--primary); font:700 .7rem 'Source Code Pro',monospace; letter-spacing:2px; text-transform:uppercase; }
+        .movie-box-search h1 { margin:8px 0 5px; font:900 clamp(1.55rem,4vw,2.6rem) 'Orbitron',sans-serif; letter-spacing:-.5px; }
+        .movie-box-search p { color:#999; margin-bottom:18px; font-size:1rem; }
+        .movie-box-searchbar { display:flex; gap:10px; max-width:900px; }
+        .movie-box-searchbar select,.movie-box-searchbar input { min-height:48px; border:1px solid #393939; background:#000; color:#fff; padding:0 14px; font:600 .9rem 'Rajdhani',sans-serif; }
+        .movie-box-searchbar select { border-radius:10px; color:var(--primary); }
+        .movie-box-searchbar input { flex:1; border-radius:10px; font-family:'Source Code Pro',monospace; }
+        .movie-box-searchbar input:focus,.movie-box-searchbar select:focus { border-color:var(--primary); box-shadow:0 0 14px rgba(255,215,0,.18); }
+        .movie-box-shortcuts { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+        .movie-box-shortcuts button { border:1px solid rgba(255,215,0,.28); background:rgba(255,215,0,.06); color:#ddd; padding:9px 13px; border-radius:999px; cursor:pointer; font:700 .72rem 'Orbitron',sans-serif; }
+        .movie-box-shortcuts button:hover,.movie-box-shortcuts button:focus-visible { color:#050505; background:var(--primary); outline:none; }
+        body.search-first .player-zone .stage-container, body.search-first .player-zone #player-status, body.search-first .player-zone #player-source-switcher, body.search-first .player-zone .paste-play-box, body.search-first .player-zone .control-dock { display:none; }
         .player-action { display:inline-flex; align-items:center; justify-content:center; min-height:36px; margin:6px 4px 0; padding:7px 12px; border:1px solid var(--primary); border-radius:8px; color:var(--primary); text-decoration:none; font:700 .72rem 'Orbitron',sans-serif; }
         .player-action:hover, .player-action:focus-visible { background:var(--primary); color:#000; outline:2px solid #fff; outline-offset:2px; }
         .channel-card:focus-visible, .btn:focus-visible, .filter-btn:focus-visible, .api-card:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid var(--primary); outline-offset:3px; }
@@ -190,6 +203,11 @@
             .stream-nav { margin:0 -2px; border-radius:12px; }
             .stream-nav button { min-height:36px; padding:8px 11px; font-size:.62rem; }
             .stream-nav .nav-spacer { display:none; }
+            .movie-box-search { padding:22px 16px; }
+            .movie-box-searchbar { flex-wrap:wrap; }
+            .movie-box-searchbar select { width:100%; }
+            .movie-box-searchbar input { min-width:0; width:100%; }
+            .movie-box-searchbar .btn { width:100%; }
             .whatsapp-badge { font-size: .65rem; padding: 8px 10px; }
             .control-dock, .card { padding: 16px; }
             .btn-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
@@ -1003,6 +1021,29 @@
             <button type="button" data-nav="settings" onclick="navigateStream('settings', this)"><span>⚙</span> ADMIN</button>
         </nav>
 
+        <section class="movie-box-search" aria-label="Search Stream HD">
+            <div class="movie-box-kicker">STREAM HD · MOVIE BOX</div>
+            <h1>What do you want to watch?</h1>
+            <p>Search movies, series, official live channels, music, and videos.</p>
+            <div class="movie-box-searchbar">
+                <select id="home-search-type" aria-label="Search category">
+                    <option value="movie">Movies</option>
+                    <option value="tv">Series</option>
+                    <option value="youtube-video">YouTube videos</option>
+                    <option value="kenya">Kenya TV</option>
+                    <option value="music">Music</option>
+                </select>
+                <input id="home-search-input" type="search" placeholder="Search title, channel, or artist..." autocomplete="off" onkeydown="if(event.key==='Enter') submitHomeSearch()">
+                <button class="btn btn-primary" type="button" onclick="submitHomeSearch()">⌕ SEARCH</button>
+            </div>
+            <div class="movie-box-shortcuts" aria-label="Browse shortcuts">
+                <button type="button" onclick="openSearch('movie')">🎬 Movies</button>
+                <button type="button" onclick="openSearch('tv')">📺 Series</button>
+                <button type="button" onclick="openSearch('kenya')">🇰🇪 Live TV</button>
+                <button type="button" onclick="openSearch('yocinema')">▣ YOCINEMA</button>
+            </div>
+        </section>
+
         <main class="player-zone">
             <div class="stage-container" id="stage">
                 <div id="loader" class="loader"></div>
@@ -1554,6 +1595,7 @@
             return `https://www.youtube-nocookie.com/embed/${target}?${query.toString()}`;
         }
         function hideAllPlayers() {
+            document.body.classList.remove('search-first');
             if (activeHls) { activeHls.destroy(); activeHls = null; }
             ['player', 'native-video', 'audio-player', 'movie-frame', 'yt-frame', 'game-frame'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.style.display = 'none';
@@ -1960,6 +2002,16 @@
 
             if (type === 'kenya') renderKenyaSearchResults(''); else if (type === 'archive') fetchArchiveResults(''); else if (type === 'yocinema') fetchYocinemaResults(''); else if (type === 'youtube-audio') fetchYouTubeVideoResults('official music audio'); else if (type === 'youtube-video') fetchYouTubeVideoResults('official videos'); else fetchTrending(type);
             setTimeout(() => document.getElementById('search-input').focus(), 100);
+        }
+        function submitHomeSearch() {
+            const type = document.getElementById('home-search-type')?.value || 'movie';
+            const query = String(document.getElementById('home-search-input')?.value || '').trim();
+            openSearch(type);
+            if (query) {
+                const input = document.getElementById('search-input');
+                if (input) input.value = query;
+                executeSearch();
+            }
         }
         function mobileNav(action) {
             if (action === 'home') { navigateStream('home'); return; }
@@ -2557,11 +2609,12 @@
             event.preventDefault(); cards[next].focus();
         });
         window.onload = async () => {
+            document.body.classList.add('search-first');
             await loadVercelPlayerConfig();
             if(isVIP) {
                 document.body.classList.add('vip-mode');
             }
-            renderChannels(); switchSource(0);
+            renderChannels();
 
             setTimeout(() => {
                 const splash = document.getElementById('splash-screen');
