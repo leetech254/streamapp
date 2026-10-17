@@ -166,6 +166,13 @@
             display: none; background: #000; z-index: 5;
         }
         #audio-player { width: min(88%, 760px); height: 72px; margin: auto; align-self: center; }
+        #player-empty-state { position:absolute; inset:0; z-index:4; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:12px; padding:24px; background:radial-gradient(circle at 50% 42%,rgba(255,215,0,.08),transparent 38%),#000; text-align:center; }
+        .empty-logo { font:900 clamp(1.35rem,4vw,2.7rem) 'Orbitron',sans-serif; letter-spacing:3px; color:#f5f5f5; text-shadow:0 0 18px rgba(255,255,255,.16); }
+        .empty-logo span { color:var(--primary); text-shadow:0 0 18px var(--primary); }
+        .empty-logo-mark { width:clamp(42px,8vw,68px); aspect-ratio:1; display:grid; place-items:center; border:2px solid var(--primary); border-radius:18px; color:var(--primary); font:900 clamp(1rem,3vw,1.8rem) 'Orbitron',sans-serif; box-shadow:0 0 24px rgba(255,215,0,.2),inset 0 0 22px rgba(255,215,0,.08); }
+        .empty-caption { color:#777; font:600 .68rem 'Source Code Pro',monospace; letter-spacing:1.5px; text-transform:uppercase; }
+        .empty-hint { color:#444; font:500 .62rem 'Source Code Pro',monospace; }
+        @media (max-width:700px) { #player-empty-state { gap:9px; } .empty-logo { letter-spacing:2px; } .empty-logo-mark { border-radius:14px; } }
         .player-status { position:relative; z-index:15; width:100%; box-sizing:border-box; color:#eee; font:600 .78rem 'Source Code Pro', monospace; text-align:center; pointer-events:auto; background:rgba(0,0,0,.78); border:1px solid rgba(255,215,0,.22); border-radius:10px; padding:8px; margin:10px 0 0; }
         .player-status.playing { display:none; }
         .source-switcher { display:none; gap:8px; flex-wrap:wrap; justify-content:center; width:100%; margin:10px 0 0; }
@@ -1047,6 +1054,12 @@
         <main class="player-zone">
             <div class="stage-container" id="stage">
                 <div id="loader" class="loader"></div>
+                <div id="player-empty-state" role="status" aria-label="Stream HD player ready">
+                    <div class="empty-logo-mark" aria-hidden="true">HD</div>
+                    <div class="empty-logo">STREAM <span>HD</span></div>
+                    <div class="empty-caption">Your entertainment starts here</div>
+                    <div class="empty-hint">Choose a channel or paste a supported media link</div>
+                </div>
                 <div id="player"></div>
                 <video id="native-video" controls autoplay playsinline preload="metadata" aria-label="Native video player"></video>
                 <audio id="audio-player" controls playsinline preload="metadata" aria-label="Audio player"></audio>
@@ -1645,6 +1658,8 @@
         }
         function hideAllPlayers() {
             document.body.classList.remove('search-first');
+            const emptyState = document.getElementById('player-empty-state');
+            if (emptyState) emptyState.style.display = 'none';
             if (activeHls) { activeHls.destroy(); activeHls = null; }
             ['player', 'native-video', 'audio-player', 'movie-frame', 'yt-frame', 'game-frame'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.style.display = 'none';
