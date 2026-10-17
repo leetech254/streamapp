@@ -1479,6 +1479,46 @@
 
         // Catalog metadata links to TMDB; playback uses user-supplied or authorized sources only.
         let activeHls = null;
+        let wakeLock = null;
+        const PLAYBACK_STATE_KEY = 'streamhd_last_playback';
+        function savePlaybackState(state) {
+            if (!state || !state.url) return;
+            try { localStorage.setItem(PLAYBACK_STATE_KEY, JSON.stringify({ ...state, savedAt: Date.now() })); } catch {}
+        }
+        function clearPlaybackState() { try { localStorage.removeItem(PLAYBACK_STATE_KEY); } catch {} }
+        function updateMediaSession({ title = 'Stream HD', artist = 'Stream HD', album = 'Stream HD', artwork = '' } = {}) {
+            if (!('mediaSession' in navigator) || !('MediaMetadata' in window)) return;
+            navigator.mediaSession.metadata = new MediaMetadata({ title: String(title), artist: String(artist), album: String(album), artwork: artwork ? [{ src: artwork }] : [] });
+            ['play', 'pause', 'stop'].forEach(action => { try { navigator.mediaSession.setActionHandler(action, () => {
+                const audio = document.getElementById('audio-player'); const video = document.getElementById('native-video');
+                const media = audio?.style.display !== 'none' ? audio : video;
+                if (!media) return;
+                if (action === 'play') media.play().catch(() => {});
+                else if (action === 'pause') media.pause();
+                else { media.pause(); clearPlaybackState(); }
+            }); } catch {} });
+            ['seekbackward', 'seekforward'].forEach(action => { try { navigator.mediaSession.setActionHandler(action, details => {
+                const audio = document.getElementById('audio-player'); const video = document.getElementById('native-video');
+                const media = audio?.style.display !== 'none' ? audio : video;
+                if (media && Number.isFinite(media.duration)) media.currentTime = Math.max(0, Math.min(media.duration, media.currentTime + (action === 'seekbackward' ? -1 : 1) * (details.seekOffset || 10)));
+            }); } catch {} });
+        }
+        async function requestWakeLock() { if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return; try { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } catch {} }
+        async function releaseWakeLock() { if (wakeLock) { try { await wakeLock.release(); } catch {} wakeLock = null; } }
+        function persistMediaState(media, title = 'Stream HD', artwork = '') {
+            if (!media?.src) return;
+            savePlaybackState({ url: media.currentSrc || media.src, title, artwork, kind: media.tagName === 'AUDIO' ? 'audio' : 'video', currentTime: Number(media.currentTime || 0) });
+            updateMediaSession({ title, artwork });
+        }
+        ['audio-player', 'native-video'].forEach(id => {
+            const media = document.getElementById(id);
+            if (!media) return;
+            media.addEventListener('play', () => { requestWakeLock(); persistMediaState(media); });
+            media.addEventListener('pause', () => persistMediaState(media));
+            media.addEventListener('timeupdate', () => { if (media.currentTime > 0) persistMediaState(media); });
+            media.addEventListener('ended', clearPlaybackState);
+        });
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') requestWakeLock(); else releaseWakeLock(); });
 
         art = new Artplayer({
             container: '#player',
@@ -1613,6 +1653,8 @@
             triggerLoader();
             video.style.display = 'block';
             video.controls = true; video.autoplay = true; video.playsInline = true;
+            updateMediaSession({ title: activePlayerContext.title || 'Stream HD', artwork: activePlayerContext.artwork || '' });
+            savePlaybackState({ url, title: activePlayerContext.title || 'Stream HD', artwork: activePlayerContext.artwork || '', kind, currentTime: 0 });
             if (activeHls) { activeHls.destroy(); activeHls = null; }
             if (kind === 'hls' && window.Hls && Hls.isSupported()) {
                 activeHls = new Hls({ enableWorker: true, backBufferLength: 30 });
@@ -1634,6 +1676,7 @@
         function playDirectMedia(rawUrl, title = 'Direct media', forcedKind = '') {
             const url = safeWebUrl(rawUrl);
             if (!url) { showToast('USE A VALID HTTP OR HTTPS MEDIA LINK'); return false; }
+            activePlayerContext = { ...activePlayerContext, title, artwork: activePlayerContext.artwork || '' };
             const yt = youtubeTarget(url);
             hideAllPlayers();
             triggerLoader();
@@ -1655,7 +1698,8 @@
             if (kind === 'audio') {
                 const audio = document.getElementById('audio-player');
                 audio.src = url; audio.style.display = 'block'; audio.load();
-                if ('mediaSession' in navigator && 'MediaMetadata' in window) navigator.mediaSession.metadata = new MediaMetadata({ title: String(title), artist: 'Stream HD' });
+                updateMediaSession({ title });
+                savePlaybackState({ url, title, kind: 'audio', currentTime: 0 });
                 audio.play().catch(() => setPlayerStatus('Audio is ready. Press Play to start (autoplay may be blocked).'));
                 setPlayerStatus('Audio playing'); return true;
             }
@@ -2619,6 +2663,18 @@
             if (localStorage.getItem('streamhd_whatsapp_channel_dismissed') === '1' || localStorage.getItem('streamhd_whatsapp_channel_joined') === '1') return;
             setTimeout(() => { const popup = document.getElementById('whatsapp-channel-popup'); if (popup) popup.style.display = 'flex'; }, 3400);
         }
+        function offerLastPlayback() {
+            let saved = null;
+            try { saved = JSON.parse(localStorage.getItem(PLAYBACK_STATE_KEY) || 'null'); } catch {}
+            if (!saved || !saved.url || Date.now() - Number(saved.savedAt || 0) > 7 * 24 * 60 * 60 * 1000) return;
+            setPlayerStatus(`Last session: ${saved.title || 'saved media'} is ready.`, [{ label: '▶ RESUME', onClick: () => {
+                if (!playDirectMedia(saved.url, saved.title || 'Resumed media', saved.kind || '')) return;
+                const media = saved.kind === 'audio' ? document.getElementById('audio-player') : document.getElementById('native-video');
+                const restore = () => { if (Number.isFinite(saved.currentTime) && saved.currentTime > 0) { try { media.currentTime = saved.currentTime; } catch {} } media?.removeEventListener('loadedmetadata', restore); };
+                media?.addEventListener('loadedmetadata', restore, { once: true });
+                restore();
+            } }]);
+        }
 
         document.getElementById('channel-list').addEventListener('keydown', event => {
             const cards = [...document.querySelectorAll('#channel-list .channel-card')];
@@ -2639,6 +2695,7 @@
                 document.body.classList.add('vip-mode');
             }
             renderChannels();
+            offerLastPlayback();
 
             setTimeout(() => {
                 const splash = document.getElementById('splash-screen');
