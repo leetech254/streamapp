@@ -2390,14 +2390,19 @@
                         if (!/^\d+$/.test(String(season || '')) || !/^\d+$/.test(String(episode || ''))) return showToast('ENTER VALID SEASON AND EPISODE NUMBERS');
                     }
                     closeSearch();
-                    await playMovieApiItem(id, title, type, season, episode);
+                    await playMovieApiItem(id, title, type, season, episode, item);
                 });
                 resBox.appendChild(card);
             });
             if (!resBox.children.length) resBox.innerHTML = '<p style="padding:30px;color:#777">No titles were returned by the authorized Movie API.</p>';
         }
 
-        async function playMovieApiItem(id, title, type = 'movie', season = '', episode = '') {
+        function movieApiTrailer(item) {
+            const trailers = Array.isArray(item && item.trailer_url_arr) ? item.trailer_url_arr : [];
+            return trailers.map(entry => safeWebUrl(entry && entry.url)).find(url => youtubeTarget(url)) || '';
+        }
+
+        async function playMovieApiItem(id, title, type = 'movie', season = '', episode = '', item = null) {
             try {
                 const params = { id, type, ...(type === 'tv' ? { season, episode } : {}) };
                 const body = await movieApiFetch('stream', params);
@@ -2409,8 +2414,16 @@
                 playDirectMedia(streamUrl, title, mediaKind(streamUrl) || 'video');
                 setPlayerStatus(type === 'tv' ? `AUTHORIZED API S${season} E${episode} playing` : 'AUTHORIZED API movie playing');
             } catch (error) {
-                setPlayerStatus(`Authorized playback could not start for ${title}.`, [{ label: '↻ RETRY', onClick: () => playMovieApiItem(id, title, type, season, episode) }]);
-                showToast(`MOVIE API PLAYBACK FAILED: ${apiErrorText(error.message)}`);
+                const providerMessage = apiErrorText(error.message, 'Provider unavailable');
+                const trailer = movieApiTrailer(item);
+                if (trailer) {
+                    playDirectMedia(trailer, `${title} — official trailer`, 'video');
+                    setPlayerStatus(`Full playback is temporarily unavailable for ${title}. Playing the official trailer instead.`, [{ label: '↻ RETRY FULL PLAYBACK', onClick: () => playMovieApiItem(id, title, type, season, episode, item) }]);
+                    showToast('FULL PLAYBACK UNAVAILABLE — OFFICIAL TRAILER PLAYING');
+                    return;
+                }
+                setPlayerStatus(`Authorized playback could not start for ${title}.`, [{ label: '↻ RETRY', onClick: () => playMovieApiItem(id, title, type, season, episode, item) }]);
+                showToast(`PLAYBACK UNAVAILABLE — ${providerMessage.slice(0, 80)}`);
             }
         }
 
