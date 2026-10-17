@@ -38,6 +38,18 @@ YouTube also powers the **YOUTUBE AUDIO** and **YOUTUBE VIDEOS** search buttons.
 
 Use the paste panel to play YouTube, audio, video, or HLS links in the embedded player. **Download** uses a browser-integrated blob download for Jamendo tracks and direct media sources that permit CORS; embedded video and live HLS streams remain playback-only. Jamendo tracks include artist attribution and a link back to their Jamendo page. Direct source URLs must be absolute HTTP(S) links and work only when supported by the browser, the stream's codecs, and its CORS policy. For catalog items, add the TMDB ID for metadata and add an authorized direct MP4, WebM, MOV, or HLS URL in the optional playback field to enable **PLAY FULL**. TMDB does not provide full movie or series files.
 
+## Authorized Movie API integration
+
+When you own or are authorized to use the Movie API, Stream HD exposes it through the serverless `/api/movieapi` proxy. The proxy keeps the upstream hostname in server code, validates the action/type/ID parameters, disables caching, and supports:
+
+```text
+/api/movieapi?action=search&keyword=Avatar&type=movie
+/api/movieapi?action=stream&id=3737&type=movie
+/api/movieapi?action=stream&id=77&type=tv&season=1&episode=1
+```
+
+The player controls include **AUTHORIZED MOVIE API** and **AUTHORIZED SERIES API** search actions. Movie results call the stream endpoint with the returned numeric ID. Series results ask for season and episode, then call the same endpoint with those parameters. Stream response URLs are accepted only after HTTP(S) validation and are played through the existing direct-media pipeline. The provider must return a playable, authorized URL; upstream errors such as HTTP 403 are surfaced to the user instead of being hidden.
+
 Movie and series details load the official TMDB Watch Providers list using the saved region, the browser region, and global fallbacks (`KE`, `US`, `GB`, `CA`, `AU`, `ZA`, and `NG`). The selector prioritizes free, free-with-ads, and subscription options; rent/buy options are shown only when no free or subscription match is available. If the preferred regions have no low-friction option, the best matching global region is selected and shown in the heading. Availability is supplied by TMDB/JustWatch. TMDB provider records do not include embeddable streams or DRM access; full in-site playback requires an authorized source or a provider SDK that explicitly permits embedding.
 
 The **Kenya** library includes official live channels for Citizen TV, NTV Kenya, KTN News, K24 TV, KBC Channel 1, TV47 Kenya, and Maisha TV Kenya. Selecting a channel always uses the broadcaster's official YouTube live-channel embed, never a saved individual video ID; if that broadcaster is between live programmes, the player keeps the official channel entry available and shows a neutral feed-loading state rather than opening a recorded programme as live TV.

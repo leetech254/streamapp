@@ -166,6 +166,13 @@
             display: none; background: #000; z-index: 5;
         }
         #audio-player { width: min(88%, 760px); height: 72px; margin: auto; align-self: center; }
+        #player-empty-state { position:absolute; inset:0; z-index:4; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:12px; padding:24px; background:radial-gradient(circle at 50% 42%,rgba(255,215,0,.08),transparent 38%),#000; text-align:center; }
+        .empty-logo { font:900 clamp(1.35rem,4vw,2.7rem) 'Orbitron',sans-serif; letter-spacing:3px; color:#f5f5f5; text-shadow:0 0 18px rgba(255,255,255,.16); }
+        .empty-logo span { color:var(--primary); text-shadow:0 0 18px var(--primary); }
+        .empty-logo-mark { width:clamp(42px,8vw,68px); aspect-ratio:1; display:grid; place-items:center; border:2px solid var(--primary); border-radius:18px; color:var(--primary); font:900 clamp(1rem,3vw,1.8rem) 'Orbitron',sans-serif; box-shadow:0 0 24px rgba(255,215,0,.2),inset 0 0 22px rgba(255,215,0,.08); }
+        .empty-caption { color:#777; font:600 .68rem 'Source Code Pro',monospace; letter-spacing:1.5px; text-transform:uppercase; }
+        .empty-hint { color:#444; font:500 .62rem 'Source Code Pro',monospace; }
+        @media (max-width:700px) { #player-empty-state { gap:9px; } .empty-logo { letter-spacing:2px; } .empty-logo-mark { border-radius:14px; } }
         .player-status { position:relative; z-index:15; width:100%; box-sizing:border-box; color:#eee; font:600 .78rem 'Source Code Pro', monospace; text-align:center; pointer-events:auto; background:rgba(0,0,0,.78); border:1px solid rgba(255,215,0,.22); border-radius:10px; padding:8px; margin:10px 0 0; }
         .player-status.playing { display:none; }
         .source-switcher { display:none; gap:8px; flex-wrap:wrap; justify-content:center; width:100%; margin:10px 0 0; }
@@ -1047,6 +1054,12 @@
         <main class="player-zone">
             <div class="stage-container" id="stage">
                 <div id="loader" class="loader"></div>
+                <div id="player-empty-state" role="status" aria-label="Stream HD player ready">
+                    <div class="empty-logo-mark" aria-hidden="true">HD</div>
+                    <div class="empty-logo">STREAM <span>HD</span></div>
+                    <div class="empty-caption">Your entertainment starts here</div>
+                    <div class="empty-hint">Choose a channel or paste a supported media link</div>
+                </div>
                 <div id="player"></div>
                 <video id="native-video" controls autoplay playsinline preload="metadata" aria-label="Native video player"></video>
                 <audio id="audio-player" controls playsinline preload="metadata" aria-label="Audio player"></audio>
@@ -1070,6 +1083,8 @@
                 <div class="btn-grid">
                     <button class="btn btn-primary" onclick="openSearch('youtube-audio')">🎧 YOUTUBE AUDIO</button>
                     <button class="btn btn-primary" onclick="openSearch('youtube-video')">▶️ YOUTUBE VIDEOS</button>
+                    <button class="btn btn-primary" style="border-color:#ff8c00;color:#ff8c00;" onclick="openSearch('movieapi-movie')">🎬 AUTHORIZED MOVIE API</button>
+                    <button class="btn" style="border-color:#ff8c00;color:#ff8c00;" onclick="openSearch('movieapi-tv')">📺 AUTHORIZED SERIES API</button>
                     <button class="btn btn-primary" onclick="openSearch('archive')">🎞️ FREE ARCHIVE FILMS</button>
 
                     <button class="btn" style="border-color: #00ff41; color: #00ff41;" onclick="document.getElementById('local-video').click()">📂 PLAY LOCAL</button>
@@ -1364,6 +1379,14 @@
             if (!response.ok) throw new Error(apiErrorText(body.error || body, `YOCINEMA_HTTP_${response.status}`));
             return body;
         }
+        async function movieApiFetch(action, params = {}) {
+            const url = new URL('/api/movieapi', window.location.origin);
+            url.search = new URLSearchParams({ action, ...params }).toString();
+            const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok || body.success === false) throw new Error(apiErrorText(body.error || body, `MOVIE_API_HTTP_${response.status}`));
+            return body;
+        }
         async function youtubeApiFetch(query, params = {}) {
             const url = new URL('/api/youtube-search', window.location.origin);
             url.search = new URLSearchParams({ ...(query ? { q: String(query).trim() } : {}), maxResults: 25, ...params }).toString();
@@ -1479,6 +1502,46 @@
 
         // Catalog metadata links to TMDB; playback uses user-supplied or authorized sources only.
         let activeHls = null;
+        let wakeLock = null;
+        const PLAYBACK_STATE_KEY = 'streamhd_last_playback';
+        function savePlaybackState(state) {
+            if (!state || !state.url) return;
+            try { localStorage.setItem(PLAYBACK_STATE_KEY, JSON.stringify({ ...state, savedAt: Date.now() })); } catch {}
+        }
+        function clearPlaybackState() { try { localStorage.removeItem(PLAYBACK_STATE_KEY); } catch {} }
+        function updateMediaSession({ title = 'Stream HD', artist = 'Stream HD', album = 'Stream HD', artwork = '' } = {}) {
+            if (!('mediaSession' in navigator) || !('MediaMetadata' in window)) return;
+            navigator.mediaSession.metadata = new MediaMetadata({ title: String(title), artist: String(artist), album: String(album), artwork: artwork ? [{ src: artwork }] : [] });
+            ['play', 'pause', 'stop'].forEach(action => { try { navigator.mediaSession.setActionHandler(action, () => {
+                const audio = document.getElementById('audio-player'); const video = document.getElementById('native-video');
+                const media = audio?.style.display !== 'none' ? audio : video;
+                if (!media) return;
+                if (action === 'play') media.play().catch(() => {});
+                else if (action === 'pause') media.pause();
+                else { media.pause(); clearPlaybackState(); }
+            }); } catch {} });
+            ['seekbackward', 'seekforward'].forEach(action => { try { navigator.mediaSession.setActionHandler(action, details => {
+                const audio = document.getElementById('audio-player'); const video = document.getElementById('native-video');
+                const media = audio?.style.display !== 'none' ? audio : video;
+                if (media && Number.isFinite(media.duration)) media.currentTime = Math.max(0, Math.min(media.duration, media.currentTime + (action === 'seekbackward' ? -1 : 1) * (details.seekOffset || 10)));
+            }); } catch {} });
+        }
+        async function requestWakeLock() { if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return; try { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } catch {} }
+        async function releaseWakeLock() { if (wakeLock) { try { await wakeLock.release(); } catch {} wakeLock = null; } }
+        function persistMediaState(media, title = 'Stream HD', artwork = '') {
+            if (!media?.src) return;
+            savePlaybackState({ url: media.currentSrc || media.src, title, artwork, kind: media.tagName === 'AUDIO' ? 'audio' : 'video', currentTime: Number(media.currentTime || 0) });
+            updateMediaSession({ title, artwork });
+        }
+        ['audio-player', 'native-video'].forEach(id => {
+            const media = document.getElementById(id);
+            if (!media) return;
+            media.addEventListener('play', () => { requestWakeLock(); persistMediaState(media); });
+            media.addEventListener('pause', () => persistMediaState(media));
+            media.addEventListener('timeupdate', () => { if (media.currentTime > 0) persistMediaState(media); });
+            media.addEventListener('ended', clearPlaybackState);
+        });
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') requestWakeLock(); else releaseWakeLock(); });
 
         art = new Artplayer({
             container: '#player',
@@ -1595,6 +1658,8 @@
         }
         function hideAllPlayers() {
             document.body.classList.remove('search-first');
+            const emptyState = document.getElementById('player-empty-state');
+            if (emptyState) emptyState.style.display = 'none';
             if (activeHls) { activeHls.destroy(); activeHls = null; }
             ['player', 'native-video', 'audio-player', 'movie-frame', 'yt-frame', 'game-frame'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.style.display = 'none';
@@ -1613,6 +1678,8 @@
             triggerLoader();
             video.style.display = 'block';
             video.controls = true; video.autoplay = true; video.playsInline = true;
+            updateMediaSession({ title: activePlayerContext.title || 'Stream HD', artwork: activePlayerContext.artwork || '' });
+            savePlaybackState({ url, title: activePlayerContext.title || 'Stream HD', artwork: activePlayerContext.artwork || '', kind, currentTime: 0 });
             if (activeHls) { activeHls.destroy(); activeHls = null; }
             if (kind === 'hls' && window.Hls && Hls.isSupported()) {
                 activeHls = new Hls({ enableWorker: true, backBufferLength: 30 });
@@ -1634,6 +1701,7 @@
         function playDirectMedia(rawUrl, title = 'Direct media', forcedKind = '') {
             const url = safeWebUrl(rawUrl);
             if (!url) { showToast('USE A VALID HTTP OR HTTPS MEDIA LINK'); return false; }
+            activePlayerContext = { ...activePlayerContext, title, artwork: activePlayerContext.artwork || '' };
             const yt = youtubeTarget(url);
             hideAllPlayers();
             triggerLoader();
@@ -1655,7 +1723,8 @@
             if (kind === 'audio') {
                 const audio = document.getElementById('audio-player');
                 audio.src = url; audio.style.display = 'block'; audio.load();
-                if ('mediaSession' in navigator && 'MediaMetadata' in window) navigator.mediaSession.metadata = new MediaMetadata({ title: String(title), artist: 'Stream HD' });
+                updateMediaSession({ title });
+                savePlaybackState({ url, title, kind: 'audio', currentTime: 0 });
                 audio.play().catch(() => setPlayerStatus('Audio is ready. Press Play to start (autoplay may be blocked).'));
                 setPlayerStatus('Audio playing'); return true;
             }
@@ -1994,9 +2063,9 @@
         function openSearch(type) {
             searchMode = type;
             document.getElementById('search-input').value = '';
-            document.getElementById('search-head-title').innerText = type === 'movie' ? ' 🎬 SEARCH MOVIES' : type === 'tv' ? '📺 SEARCH SERIES' : type === 'yocinema' ? '🎞️ SEARCH YOCINEMA' : type === 'youtube-audio' ? '🎧 SEARCH YOUTUBE AUDIO' : type === 'youtube-video' ? '▶️ SEARCH YOUTUBE VIDEOS' : type === 'kenya' ? '🇰🇪 SEARCH KENYA TV' : type === 'archive' ? '🎞️ FREE ARCHIVE FILMS' : '🎵 SEARCH MUSIC';
+            document.getElementById('search-head-title').innerText = type === 'movie' ? ' 🎬 SEARCH MOVIES' : type === 'tv' ? '📺 SEARCH SERIES' : type === 'movieapi-movie' ? '🎬 AUTHORIZED MOVIE API — MOVIES' : type === 'movieapi-tv' ? '📺 AUTHORIZED MOVIE API — SERIES' : type === 'yocinema' ? '🎞️ SEARCH YOCINEMA' : type === 'youtube-audio' ? '🎧 SEARCH YOUTUBE AUDIO' : type === 'youtube-video' ? '▶️ SEARCH YOUTUBE VIDEOS' : type === 'kenya' ? '🇰🇪 SEARCH KENYA TV' : type === 'archive' ? '🎞️ FREE ARCHIVE FILMS' : '🎵 SEARCH MUSIC';
             document.getElementById('api-results').innerHTML = '';
-            document.getElementById('search-status').innerText = type === 'kenya' ? 'READY — SEARCH OFFICIAL KENYAN CHANNELS' : type === 'archive' ? 'SEARCHING INTERNET ARCHIVE PRELINGER COLLECTION...' : type === 'yocinema' ? 'LOADING YOCINEMA CATALOG...' : type === 'youtube-audio' ? 'SEARCHING OFFICIAL YOUTUBE AUDIO...' : type === 'youtube-video' ? 'SEARCHING OFFICIAL YOUTUBE VIDEOS...' : 'LOADING TRENDING TODAY...';
+            document.getElementById('search-status').innerText = type.startsWith('movieapi-') ? 'SEARCH THE AUTHORIZED MOVIE API CATALOG...' : type === 'kenya' ? 'READY — SEARCH OFFICIAL KENYAN CHANNELS' : type === 'archive' ? 'SEARCHING INTERNET ARCHIVE PRELINGER COLLECTION...' : type === 'yocinema' ? 'LOADING YOCINEMA CATALOG...' : type === 'youtube-audio' ? 'SEARCHING OFFICIAL YOUTUBE AUDIO...' : type === 'youtube-video' ? 'SEARCHING OFFICIAL YOUTUBE VIDEOS...' : 'LOADING TRENDING TODAY...';
             const yocinemaLanguageControls = document.getElementById('yocinema-language-controls');
             if (yocinemaLanguageControls) yocinemaLanguageControls.style.display = type === 'yocinema' ? 'flex' : 'none';
             if (type === 'yocinema') {
@@ -2005,7 +2074,7 @@
             }
             document.getElementById('search-overlay').style.display = 'flex';
 
-            if (type === 'kenya') renderKenyaSearchResults(''); else if (type === 'archive') fetchArchiveResults(''); else if (type === 'yocinema') fetchYocinemaResults(''); else if (type === 'youtube-audio') fetchYouTubeVideoResults('official music audio'); else if (type === 'youtube-video') fetchYouTubeVideoResults('official videos'); else fetchTrending(type);
+            if (type === 'kenya') renderKenyaSearchResults(''); else if (type === 'archive') fetchArchiveResults(''); else if (type === 'yocinema') fetchYocinemaResults(''); else if (type === 'youtube-audio') fetchYouTubeVideoResults('official music audio'); else if (type === 'youtube-video') fetchYouTubeVideoResults('official videos'); else if (type === 'movieapi-movie' || type === 'movieapi-tv') return; else fetchTrending(type);
             setTimeout(() => document.getElementById('search-input').focus(), 100);
         }
         function submitHomeSearch() {
@@ -2288,6 +2357,63 @@
             }
         }
 
+        async function fetchMovieApiResults(query, type = 'movie') {
+            const resBox = document.getElementById('api-results');
+            try {
+                const body = await movieApiFetch('search', { keyword: query, type });
+                const items = Array.isArray(body.data) ? body.data : Array.isArray(body.results) ? body.results : [];
+                document.getElementById('search-status').innerText = items.length ? `FOUND ${items.length} AUTHORIZED ${type === 'tv' ? 'SERIES' : 'MOVIES'}` : 'NO AUTHORIZED TITLES FOUND';
+                renderMovieApiResults(items, type);
+            } catch (error) {
+                document.getElementById('search-status').innerText = `MOVIE API SEARCH FAILED: ${apiErrorText(error.message)}`;
+                resBox.innerHTML = '<p style="padding:30px;color:#777">The authorized Movie API is temporarily unavailable.</p>';
+            }
+        }
+
+        function renderMovieApiResults(results, type) {
+            const resBox = document.getElementById('api-results');
+            resBox.replaceChildren();
+            results.forEach(item => {
+                const id = String(item && item.id || '').trim(); if (!/^\d+$/.test(id)) return;
+                const title = String(item.title || item.name || 'Untitled');
+                const year = String(item.year || item.release_year || '').slice(0, 4);
+                const img = safeWebUrl(item.poster || item.poster_min || item.poster_org || item.banner_mini) || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=222&color=ffd700&size=512`;
+                const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play ${title}`);
+                const image = document.createElement('img'); image.src = img; image.alt = `${title} poster`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
+                const caption = document.createElement('span'); caption.textContent = `${title}${year ? ` (${year})` : ''} — AUTHORIZED API`; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
+                card.append(image, caption);
+                card.addEventListener('click', async () => {
+                    let season = '', episode = '';
+                    if (type === 'tv') {
+                        season = window.prompt('Season number', '1');
+                        episode = window.prompt('Episode number', '1');
+                        if (!/^\d+$/.test(String(season || '')) || !/^\d+$/.test(String(episode || ''))) return showToast('ENTER VALID SEASON AND EPISODE NUMBERS');
+                    }
+                    closeSearch();
+                    await playMovieApiItem(id, title, type, season, episode);
+                });
+                resBox.appendChild(card);
+            });
+            if (!resBox.children.length) resBox.innerHTML = '<p style="padding:30px;color:#777">No titles were returned by the authorized Movie API.</p>';
+        }
+
+        async function playMovieApiItem(id, title, type = 'movie', season = '', episode = '') {
+            try {
+                const params = { id, type, ...(type === 'tv' ? { season, episode } : {}) };
+                const body = await movieApiFetch('stream', params);
+                const data = body && body.data ? body.data : body;
+                const candidates = [data && data.url, data && data.stream_url, data && data.streamUrl, data && data.link, data && data.file, ...(Array.isArray(data && data.links) ? data.links.map(item => item && (item.url || item.link || item.file)) : [])].map(safeWebUrl).filter(Boolean);
+                const streamUrl = candidates[0];
+                if (!streamUrl) throw new Error('MOVIE_API returned no playable stream URL');
+                activePlayerContext = { ...activePlayerContext, title, type, movieApiId: id, season, episode };
+                playDirectMedia(streamUrl, title, mediaKind(streamUrl) || 'video');
+                setPlayerStatus(type === 'tv' ? `AUTHORIZED API S${season} E${episode} playing` : 'AUTHORIZED API movie playing');
+            } catch (error) {
+                setPlayerStatus(`Authorized playback could not start for ${title}.`, [{ label: '↻ RETRY', onClick: () => playMovieApiItem(id, title, type, season, episode) }]);
+                showToast(`MOVIE API PLAYBACK FAILED: ${apiErrorText(error.message)}`);
+            }
+        }
+
         function renderYocinemaResults(results) {
             const resBox = document.getElementById('api-results');
             resBox.replaceChildren();
@@ -2381,6 +2507,7 @@
             try {
                 if (searchMode === 'archive') { fetchArchiveResults(query); return; }
                 if (searchMode === 'kenya') { searchKenyaYouTubeChannels(query); return; }
+                if (searchMode === 'movieapi-movie' || searchMode === 'movieapi-tv') { fetchMovieApiResults(query, searchMode === 'movieapi-tv' ? 'tv' : 'movie'); return; }
                 if (searchMode === 'yocinema') { fetchYocinemaResults(query); return; }
                 if (searchMode === 'youtube-audio' || searchMode === 'youtube-video') { fetchYouTubeVideoResults(query); return; }
                 if (searchMode === 'music') {
@@ -2619,6 +2746,18 @@
             if (localStorage.getItem('streamhd_whatsapp_channel_dismissed') === '1' || localStorage.getItem('streamhd_whatsapp_channel_joined') === '1') return;
             setTimeout(() => { const popup = document.getElementById('whatsapp-channel-popup'); if (popup) popup.style.display = 'flex'; }, 3400);
         }
+        function offerLastPlayback() {
+            let saved = null;
+            try { saved = JSON.parse(localStorage.getItem(PLAYBACK_STATE_KEY) || 'null'); } catch {}
+            if (!saved || !saved.url || Date.now() - Number(saved.savedAt || 0) > 7 * 24 * 60 * 60 * 1000) return;
+            setPlayerStatus(`Last session: ${saved.title || 'saved media'} is ready.`, [{ label: '▶ RESUME', onClick: () => {
+                if (!playDirectMedia(saved.url, saved.title || 'Resumed media', saved.kind || '')) return;
+                const media = saved.kind === 'audio' ? document.getElementById('audio-player') : document.getElementById('native-video');
+                const restore = () => { if (Number.isFinite(saved.currentTime) && saved.currentTime > 0) { try { media.currentTime = saved.currentTime; } catch {} } media?.removeEventListener('loadedmetadata', restore); };
+                media?.addEventListener('loadedmetadata', restore, { once: true });
+                restore();
+            } }]);
+        }
 
         document.getElementById('channel-list').addEventListener('keydown', event => {
             const cards = [...document.querySelectorAll('#channel-list .channel-card')];
@@ -2639,6 +2778,7 @@
                 document.body.classList.add('vip-mode');
             }
             renderChannels();
+            offerLastPlayback();
 
             setTimeout(() => {
                 const splash = document.getElementById('splash-screen');
