@@ -34,12 +34,22 @@ module.exports = async function yocinemaHandler(req, res) {
   }
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    init.signal = controller.signal;
     const upstream = await fetch(url, init);
+    clearTimeout(timeout);
     const text = await upstream.text();
+    let parsed;
+    try { parsed = JSON.parse(text); } catch {}
+    if (parsed && parsed.success === false) {
+      const nested = parsed.data && typeof parsed.data === 'object' ? parsed.data : {};
+      return sendError(res, upstream.status || 502, nested.error || parsed.error || 'YOCINEMA upstream request failed', nested.code || parsed.code || 'YOCINEMA_API_ERROR');
+    }
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json; charset=utf-8');
     return res.status(upstream.status).send(text);
   } catch (error) {
-    return sendError(res, 502, error && error.message ? error.message : 'YOCINEMA upstream request failed', 'YOCINEMA_UPSTREAM_ERROR');
+    return sendError(res, 502, error?.name === 'AbortError' ? 'YOCINEMA request timed out' : (error && error.message ? error.message : 'YOCINEMA upstream request failed'), error?.name === 'AbortError' ? 'YOCINEMA_TIMEOUT' : 'YOCINEMA_UPSTREAM_ERROR');
   }
 };

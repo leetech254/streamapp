@@ -22,23 +22,22 @@ module.exports = async function youtubeHandler(req, res) {
     part: 'snippet',
     type: liveOnly || videoMode ? 'video' : 'channel',
     maxResults: String(Math.min(Math.max(Number(req.query.maxResults) || (liveOnly ? 1 : 25), 1), 50)),
-    regionCode: 'KE',
-    relevanceLanguage: 'en',
     key: apiKey
   };
   if (query) params.q = query;
   if (channelId) params.channelId = channelId;
   if (liveOnly) {
     params.eventType = 'live';
-    // Exclude broadcasts that appear in search but render as unavailable in an iframe.
     params.videoEmbeddable = 'true';
-    params.videoSyndicated = 'true';
   }
-  if (videoMode) { params.videoEmbeddable = 'true'; params.videoSyndicated = 'true'; }
+  if (videoMode) params.videoEmbeddable = 'true';
   url.search = new URLSearchParams(params).toString();
 
   try {
-    const upstream = await fetch(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let upstream;
+    try { upstream = await fetch(url, { signal: controller.signal }); } finally { clearTimeout(timeout); }
     const text = await upstream.text();
     let body;
     try { body = JSON.parse(text); } catch { body = { error: text }; }
@@ -46,6 +45,6 @@ module.exports = async function youtubeHandler(req, res) {
     res.setHeader('Cache-Control', liveOnly ? 'no-store, max-age=0' : 'public, max-age=120, s-maxage=300');
     return res.status(200).json(body);
   } catch (error) {
-    return errorResponse(res, 502, error && error.message ? error.message : 'YouTube API unavailable', 'YOUTUBE_UPSTREAM_ERROR');
+    return errorResponse(res, 502, error?.name === 'AbortError' ? 'YouTube API request timed out' : (error && error.message ? error.message : 'YouTube API unavailable'), error?.name === 'AbortError' ? 'YOUTUBE_TIMEOUT' : 'YOUTUBE_UPSTREAM_ERROR');
   }
 };

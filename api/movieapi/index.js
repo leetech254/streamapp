@@ -8,8 +8,20 @@ function sendError(res, status, message, code = 'MOVIE_API_ERROR') {
 function integer(value, name, required = true) {
   const text = String(value ?? '').trim();
   if (!text && !required) return '';
-  if (!/^\d+$/.test(text)) throw new Error(`${name} must be a positive integer`);
+  if (!/^\d+$/.test(text) || Number(text) < 1 || Number(text) > 99999999) throw new Error(`${name} must be a positive integer`);
   return text;
+}
+
+async function requestJson(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const upstream = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json', 'User-Agent': 'StreamHD/1.0' } });
+    const text = await upstream.text();
+    const contentType = upstream.headers.get('content-type') || '';
+    if (!contentType.includes('json')) return { status: 502, text: JSON.stringify({ error: 'Movie API returned a non-JSON response', code: 'UPSTREAM_INVALID_RESPONSE' }), contentType: 'application/json; charset=utf-8' };
+    return { status: upstream.status, text, contentType };
+  } finally { clearTimeout(timeout); }
 }
 
 module.exports = async function movieApiHandler(req, res) {
@@ -38,7 +50,7 @@ module.exports = async function movieApiHandler(req, res) {
       url.searchParams.set('type', type);
     } else {
       const id = integer(query.id, 'id');
-      url = new URL(`${API_BASE}/stream`);
+      url = new URL(`${API_BASE}/showbox/streams`);
       url.searchParams.set('id', id);
       url.searchParams.set('type', type);
       if (type === 'tv') {
@@ -53,12 +65,18 @@ module.exports = async function movieApiHandler(req, res) {
   }
 
   try {
-    const upstream = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': 'StreamHD/1.0' } });
-    const text = await upstream.text();
+    let result = await requestJson(url);
+    // The documented direct route is preferred; fall back to the documented embed route.
+    if (action === 'stream' && result.status >= 500) {
+      const fallback = new URL(`${API_BASE}/stream`);
+      for (const [key, value] of url.searchParams) fallback.searchParams.set(key, value);
+      result = await requestJson(fallback);
+    }
     res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json; charset=utf-8');
-    return res.status(upstream.status).send(text);
+    res.setHeader('Content-Type', result.contentType);
+    return res.status(result.status).send(result.text);
   } catch (error) {
-    return sendError(res, 502, error?.message || 'Movie API upstream request failed', 'UPSTREAM_ERROR');
+    const code = error?.name === 'AbortError' ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_ERROR';
+    return sendError(res, 502, error?.name === 'AbortError' ? 'Movie API request timed out' : (error?.message || 'Movie API upstream request failed'), code);
   }
 };

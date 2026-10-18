@@ -24,9 +24,14 @@ module.exports = async function handler(req, res) {
   params.set('format', 'json');
 
   try {
-    const response = await fetch(`https://api.jamendo.com/v3.0/${path}?${params}`, {
-      headers: { Accept: 'application/json' }
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let response;
+    try {
+      response = await fetch(`https://api.jamendo.com/v3.0/${path}?${params}`, {
+        headers: { Accept: 'application/json' }, signal: controller.signal
+      });
+    } finally { clearTimeout(timeout); }
     const body = await response.text();
     let parsed;
     try { parsed = JSON.parse(body); } catch {}
@@ -39,6 +44,6 @@ module.exports = async function handler(req, res) {
     return res.status(response.status).send(body);
   } catch (error) {
     console.error('Jamendo proxy request failed', error);
-    return res.status(502).json({ error: 'JAMENDO_UPSTREAM_UNAVAILABLE' });
+    return res.status(502).json({ error: error?.name === 'AbortError' ? 'JAMENDO_UPSTREAM_TIMEOUT' : 'JAMENDO_UPSTREAM_UNAVAILABLE' });
   }
 };

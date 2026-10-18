@@ -1723,14 +1723,14 @@
             if (kind === 'audio') {
                 const audio = document.getElementById('audio-player');
                 audio.src = url; audio.style.display = 'block'; audio.load();
+                audio.onerror = () => setPlayerStatus('Audio source could not be loaded.', [{ label: '↻ RETRY', onClick: () => playDirectMedia(url, title, 'audio') }]);
                 updateMediaSession({ title });
                 savePlaybackState({ url, title, kind: 'audio', currentTime: 0 });
-                audio.play().catch(() => setPlayerStatus('Audio is ready. Press Play to start (autoplay may be blocked).'));
-                setPlayerStatus('Audio playing'); return true;
+                audio.play().then(() => setPlayerStatus('Audio playing')).catch(() => setPlayerStatus('Audio is ready. Press Play to start (autoplay may be blocked).')); return true;
             }
             if (kind === 'video' || kind === 'hls') {
                 playNativeVideo(url, kind);
-                setPlayerStatus(kind === 'hls' ? 'Live / HLS playing' : 'Video playing'); return true;
+                setPlayerStatus(kind === 'hls' ? 'Live / HLS ready. Press Play if needed.' : 'Video ready. Press Play if needed.'); return true;
             }
             setPlayerStatus('Unsupported media link.');
             showToast('UNSUPPORTED MEDIA LINK'); return false;
@@ -2276,13 +2276,27 @@
             frame.style.display = 'block';
             frame.src = youtubeEmbedUrl(encodeURIComponent(videoId));
             closeSearch();
-            setPlayerStatus(audioMode ? 'Playing official YouTube audio video' : 'Playing official YouTube video');
+            monitorEmbeddedFrame(frame, audioMode ? 'official YouTube audio video' : 'official YouTube video');
             showToast(audioMode ? 'OPENING OFFICIAL AUDIO' : 'OPENING OFFICIAL VIDEO');
+        }
+
+        function monitorEmbeddedFrame(frame, label, retry) {
+            if (!frame) return;
+            let settled = false;
+            const timer = setTimeout(() => { if (!settled) setPlayerStatus(`${label} is taking too long to load.`, [{ label: '↻ RETRY', onClick: retry || (() => { frame.src = frame.src; monitorEmbeddedFrame(frame, label, retry); }) }]); }, 12000);
+            frame.onload = () => { settled = true; clearTimeout(timer); setPlayerStatus(`Playing ${label}`); };
+            frame.onerror = () => { settled = true; clearTimeout(timer); setPlayerStatus(`${label} could not be loaded.`, [{ label: '↻ RETRY', onClick: retry || (() => { frame.src = frame.src; monitorEmbeddedFrame(frame, label, retry); }) }]); };
+            setPlayerStatus(`Opening ${label}…`);
         }
 
         async function fetchArchiveResults(query) {
             const resBox = document.getElementById('api-results');
             const term = String(query || '').trim();
+            if (/["'/:]/.test(term)) {
+                document.getElementById('search-status').innerText = 'ARCHIVE SEARCH TERM CONTAINS UNSUPPORTED CHARACTERS';
+                resBox.innerHTML = '<p style="padding:30px;color:#777">Use words and spaces only for Archive titles.</p>';
+                return;
+            }
             const q = term ? `collection:prelinger AND title:(${term.replace(/[()]/g, ' ')})` : 'collection:prelinger';
             const url = new URL('https://archive.org/advancedsearch.php');
             const params = new URLSearchParams({ q, rows: '24', page: '1', output: 'json' });
@@ -2292,11 +2306,12 @@
                 const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
                 if (!response.ok) throw new Error(`ARCHIVE_HTTP_${response.status}`);
                 const data = await response.json();
+                if (data && data.error) throw new Error('ARCHIVE_API_ERROR');
                 const results = data.response && Array.isArray(data.response.docs) ? data.response.docs : [];
                 document.getElementById('search-status').innerText = results.length ? `FOUND ${results.length} INTERNET ARCHIVE FILMS` : 'NO ARCHIVE FILMS FOUND — TRY ANOTHER TITLE';
                 renderArchiveResults(results);
             } catch (error) {
-                document.getElementById('search-status').innerText = 'INTERNET ARCHIVE SEARCH NEEDS AN INTERNET CONNECTION — TRY AGAIN ONLINE';
+                document.getElementById('search-status').innerText = `INTERNET ARCHIVE SEARCH FAILED: ${apiErrorText(error.message, 'TRY AGAIN')}`;
                 resBox.innerHTML = '<p style="padding:30px;color:#777">Archive search is temporarily unavailable.</p>';
             }
         }
@@ -2318,7 +2333,7 @@
             hideAllPlayers(); triggerLoader();
             const frame = document.getElementById('movie-frame');
             frame.style.display = 'block'; frame.src = `https://archive.org/embed/${encodeURIComponent(identifier)}`;
-            setPlayerStatus('Playing Internet Archive film');
+            monitorEmbeddedFrame(frame, 'Internet Archive film', () => playArchiveItem(identifier, title));
             showToast('OPENING ARCHIVE FILM');
         }
 
@@ -2387,7 +2402,7 @@
                     if (type === 'tv') {
                         season = window.prompt('Season number', '1');
                         episode = window.prompt('Episode number', '1');
-                        if (!/^\d+$/.test(String(season || '')) || !/^\d+$/.test(String(episode || ''))) return showToast('ENTER VALID SEASON AND EPISODE NUMBERS');
+                        if (!/^\d+$/.test(String(season || '')) || !/^\d+$/.test(String(episode || '')) || Number(season) < 1 || Number(episode) < 1 || Number(season) > 99 || Number(episode) > 999) return showToast('ENTER VALID SEASON AND EPISODE NUMBERS');
                     }
                     closeSearch();
                     await playMovieApiItem(id, title, type, season, episode, item);
@@ -2407,7 +2422,7 @@
                 const params = { id, type, ...(type === 'tv' ? { season, episode } : {}) };
                 const body = await movieApiFetch('stream', params);
                 const data = body && body.data ? body.data : body;
-                const candidates = [data && data.url, data && data.stream_url, data && data.streamUrl, data && data.link, data && data.file, ...(Array.isArray(data && data.links) ? data.links.map(item => item && (item.url || item.link || item.file)) : [])].map(safeWebUrl).filter(Boolean);
+                const candidates = [data && data.url, data && data.proxyUrl, data && data.proxy_url, data && data.stream_url, data && data.streamUrl, data && data.link, data && data.file, ...(Array.isArray(data && data.links) ? data.links.map(item => item && (item.proxyUrl || item.proxy_url || item.url || item.link || item.file)) : []), ...(Array.isArray(data && data.streams) ? data.streams.map(item => item && (item.proxyUrl || item.proxy_url || item.url || item.link || item.file)) : [])].map(safeWebUrl).filter(Boolean);
                 const streamUrl = candidates[0];
                 if (!streamUrl) throw new Error('MOVIE_API returned no playable stream URL');
                 activePlayerContext = { ...activePlayerContext, title, type, movieApiId: id, season, episode };
