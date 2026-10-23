@@ -12,7 +12,7 @@
     <meta name="theme-color" content="#050505">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="https://ui-avatars.com/api/?name=MOVIE+BOX&background=ffd700&color=000">
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png">
 
     <title>STREAM HD | MOVIE BOX EDITION</title>
 
@@ -1503,6 +1503,7 @@
         // Catalog metadata links to TMDB; playback uses user-supplied or authorized sources only.
         let activeHls = null;
         let wakeLock = null;
+        let activePlaybackSource = '';
         const PLAYBACK_STATE_KEY = 'streamhd_last_playback';
         function savePlaybackState(state) {
             if (!state || !state.url) return;
@@ -1511,37 +1512,56 @@
         function clearPlaybackState() { try { localStorage.removeItem(PLAYBACK_STATE_KEY); } catch {} }
         function updateMediaSession({ title = 'Stream HD', artist = 'Stream HD', album = 'Stream HD', artwork = '' } = {}) {
             if (!('mediaSession' in navigator) || !('MediaMetadata' in window)) return;
-            navigator.mediaSession.metadata = new MediaMetadata({ title: String(title), artist: String(artist), album: String(album), artwork: artwork ? [{ src: artwork }] : [] });
+            navigator.mediaSession.metadata = new MediaMetadata({ title: String(title), artist: String(artist), album: String(album), artwork: artwork ? [{ src: artwork, sizes: '512x512', type: 'image/png' }] : [] });
             ['play', 'pause', 'stop'].forEach(action => { try { navigator.mediaSession.setActionHandler(action, () => {
                 const audio = document.getElementById('audio-player'); const video = document.getElementById('native-video');
-                const media = audio?.style.display !== 'none' ? audio : video;
+                const media = audio?.style.display !== 'none' && audio?.src ? audio : video;
                 if (!media) return;
                 if (action === 'play') media.play().catch(() => {});
                 else if (action === 'pause') media.pause();
-                else { media.pause(); clearPlaybackState(); }
+                else { media.pause(); clearPlaybackState(); activePlaybackSource = ''; }
             }); } catch {} });
             ['seekbackward', 'seekforward'].forEach(action => { try { navigator.mediaSession.setActionHandler(action, details => {
                 const audio = document.getElementById('audio-player'); const video = document.getElementById('native-video');
-                const media = audio?.style.display !== 'none' ? audio : video;
+                const media = audio?.style.display !== 'none' && audio?.src ? audio : video;
                 if (media && Number.isFinite(media.duration)) media.currentTime = Math.max(0, Math.min(media.duration, media.currentTime + (action === 'seekbackward' ? -1 : 1) * (details.seekOffset || 10)));
             }); } catch {} });
+            try { navigator.mediaSession.setActionHandler('seekto', details => {
+                const media = document.getElementById('audio-player')?.src ? document.getElementById('audio-player') : document.getElementById('native-video');
+                if (media && Number.isFinite(details.seekTime)) media.currentTime = details.seekTime;
+            }); } catch {}
         }
-        async function requestWakeLock() { if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return; try { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } catch {} }
+        async function requestWakeLock() { if (!('wakeLock' in navigator) || document.visibilityState !== 'visible' || wakeLock) return; try { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } catch {} }
         async function releaseWakeLock() { if (wakeLock) { try { await wakeLock.release(); } catch {} wakeLock = null; } }
         function persistMediaState(media, title = 'Stream HD', artwork = '') {
-            if (!media?.src) return;
-            savePlaybackState({ url: media.currentSrc || media.src, title, artwork, kind: media.tagName === 'AUDIO' ? 'audio' : 'video', currentTime: Number(media.currentTime || 0) });
+            const url = activePlaybackSource || media?.currentSrc || media?.src || '';
+            if (!media || !url) return;
+            const context = activePlayerContext || {};
+            savePlaybackState({ url, title: title !== 'Stream HD' ? title : (context.title || 'Stream HD'), artwork: artwork || context.artwork || '', kind: media.tagName === 'AUDIO' ? 'audio' : (/\.m3u8(?:$|\?)/i.test(url) ? 'hls' : 'video'), currentTime: Number(media.currentTime || 0), duration: Number.isFinite(media.duration) ? media.duration : 0 });
             updateMediaSession({ title, artwork });
         }
         ['audio-player', 'native-video'].forEach(id => {
             const media = document.getElementById(id);
             if (!media) return;
-            media.addEventListener('play', () => { requestWakeLock(); persistMediaState(media); });
-            media.addEventListener('pause', () => persistMediaState(media));
-            media.addEventListener('timeupdate', () => { if (media.currentTime > 0) persistMediaState(media); });
-            media.addEventListener('ended', clearPlaybackState);
+            media.addEventListener('play', () => { requestWakeLock(); persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); });
+            media.addEventListener('pause', () => persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork));
+            media.addEventListener('timeupdate', () => { if (media.currentTime > 0) persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); });
+            media.addEventListener('loadedmetadata', () => persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork));
+            media.addEventListener('error', () => { setPlayerStatus(`${id === 'audio-player' ? 'Audio' : 'Video'} source failed to load.`, [{ label: '↻ RETRY', onClick: () => playDirectMedia(activePlaybackSource, activePlayerContext.title || 'Stream HD', id === 'audio-player' ? 'audio' : '') }]); });
+            media.addEventListener('ended', () => { clearPlaybackState(); activePlaybackSource = ''; });
         });
-        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') requestWakeLock(); else releaseWakeLock(); });
+        document.addEventListener('visibilitychange', () => {
+            const audio = document.getElementById('audio-player'); const video = document.getElementById('native-video');
+            const media = audio?.src ? audio : video;
+            if (document.visibilityState === 'visible' && media && !media.paused) requestWakeLock();
+            else if (document.visibilityState !== 'visible') releaseWakeLock();
+            if (media && !media.paused) persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork);
+        });
+        window.addEventListener('pagehide', () => {
+            const audio = document.getElementById('audio-player'); const video = document.getElementById('native-video');
+            const media = audio?.src ? audio : video;
+            if (media) persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork);
+        });
 
         art = new Artplayer({
             container: '#player',
@@ -1678,6 +1698,7 @@
             triggerLoader();
             video.style.display = 'block';
             video.controls = true; video.autoplay = true; video.playsInline = true;
+            activePlaybackSource = url;
             updateMediaSession({ title: activePlayerContext.title || 'Stream HD', artwork: activePlayerContext.artwork || '' });
             savePlaybackState({ url, title: activePlayerContext.title || 'Stream HD', artwork: activePlayerContext.artwork || '', kind, currentTime: 0 });
             if (activeHls) { activeHls.destroy(); activeHls = null; }
@@ -1688,7 +1709,7 @@
                     if (!data.fatal) return;
                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) activeHls.startLoad();
                     else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) activeHls.recoverMediaError();
-                    else { activeHls.destroy(); activeHls = null; setPlayerStatus('HLS playback is unavailable on this device or source.'); }
+                    else { activeHls.destroy(); activeHls = null; setPlayerStatus('HLS playback is unavailable on this device or source.', [{ label: '↻ RETRY', onClick: () => playNativeVideo(url, 'hls') }]); }
                 });
             } else {
                 video.src = url; video.load();
@@ -1722,6 +1743,7 @@
             const kind = forcedKind || mediaKind(url);
             if (kind === 'audio') {
                 const audio = document.getElementById('audio-player');
+                activePlaybackSource = url;
                 audio.src = url; audio.style.display = 'block'; audio.load();
                 audio.onerror = () => setPlayerStatus('Audio source could not be loaded.', [{ label: '↻ RETRY', onClick: () => playDirectMedia(url, title, 'audio') }]);
                 updateMediaSession({ title });
