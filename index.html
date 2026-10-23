@@ -175,6 +175,12 @@
         @media (max-width:700px) { #player-empty-state { gap:9px; } .empty-logo { letter-spacing:2px; } .empty-logo-mark { border-radius:14px; } }
         .player-status { position:relative; z-index:15; width:100%; box-sizing:border-box; color:#eee; font:600 .78rem 'Source Code Pro', monospace; text-align:center; pointer-events:auto; background:rgba(0,0,0,.78); border:1px solid rgba(255,215,0,.22); border-radius:10px; padding:8px; margin:10px 0 0; }
         .player-status.playing { display:none; }
+        .playback-dock { display:none; align-items:center; justify-content:center; gap:7px; flex-wrap:wrap; width:100%; margin:10px 0 0; padding:8px; border:1px solid rgba(0,243,255,.2); border-radius:11px; background:rgba(0,0,0,.72); }
+        .playback-dock.active { display:flex; }
+        .playback-dock button, .playback-dock select { min-height:34px; border:1px solid rgba(255,215,0,.38); border-radius:8px; background:#0b0b0b; color:#eee; padding:6px 10px; font:700 .68rem 'Source Code Pro',monospace; cursor:pointer; }
+        .playback-dock button:hover, .playback-dock button:focus-visible, .playback-dock select:focus-visible { color:#050505; background:var(--primary); outline:2px solid #fff; outline-offset:2px; }
+        .playback-dock .playback-time { min-width:92px; color:#8fefff; font:600 .68rem 'Source Code Pro',monospace; text-align:center; }
+        @media (max-width:700px) { .playback-dock { gap:5px; padding:7px 4px; } .playback-dock button,.playback-dock select { padding:6px 7px; font-size:.61rem; } .playback-dock .playback-time { min-width:78px; } }
         .source-switcher { display:none; gap:8px; flex-wrap:wrap; justify-content:center; width:100%; margin:10px 0 0; }
         .source-switcher .btn { min-height:38px; padding:8px 12px; font-size:.7rem; }
         .mobile-bottom-nav { display:none; }
@@ -196,7 +202,7 @@
         .movie-box-shortcuts { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
         .movie-box-shortcuts button { border:1px solid rgba(255,215,0,.28); background:rgba(255,215,0,.06); color:#ddd; padding:9px 13px; border-radius:999px; cursor:pointer; font:700 .72rem 'Orbitron',sans-serif; }
         .movie-box-shortcuts button:hover,.movie-box-shortcuts button:focus-visible { color:#050505; background:var(--primary); outline:none; }
-        body.search-first .player-zone .stage-container, body.search-first .player-zone #player-status, body.search-first .player-zone #player-source-switcher, body.search-first .player-zone .paste-play-box, body.search-first .player-zone .control-dock { display:none; }
+        body.search-first .player-zone .stage-container, body.search-first .player-zone #player-status, body.search-first .player-zone #player-source-switcher, body.search-first .player-zone .paste-play-box, body.search-first .player-zone .control-dock, body.search-first .player-zone .playback-dock { display:none; }
         .player-action { display:inline-flex; align-items:center; justify-content:center; min-height:36px; margin:6px 4px 0; padding:7px 12px; border:1px solid var(--primary); border-radius:8px; color:var(--primary); text-decoration:none; font:700 .72rem 'Orbitron',sans-serif; }
         .player-action:hover, .player-action:focus-visible { background:var(--primary); color:#000; outline:2px solid #fff; outline-offset:2px; }
         .channel-card:focus-visible, .btn:focus-visible, .filter-btn:focus-visible, .api-card:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid var(--primary); outline-offset:3px; }
@@ -1068,6 +1074,18 @@
                 <iframe id="game-frame" allowfullscreen></iframe>
             </div>
             <div id="player-status" class="player-status" role="status" aria-live="polite">Choose a channel or paste a supported media link.</div>
+            <div id="playback-dock" class="playback-dock" aria-label="Playback controls">
+                <button type="button" onclick="seekPlayback(-10)" aria-label="Seek backward 10 seconds">↶ 10s</button>
+                <button id="playback-toggle" type="button" onclick="togglePlayback()" aria-label="Play or pause">▶ PLAY</button>
+                <button type="button" onclick="seekPlayback(30)" aria-label="Seek forward 30 seconds">30s ↷</button>
+                <span id="playback-time" class="playback-time">0:00 / 0:00</span>
+                <select id="playback-speed" onchange="setPlaybackRate(this.value)" aria-label="Playback speed">
+                    <option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+                </select>
+                <button type="button" onclick="togglePiP()" aria-label="Picture in picture">▣ PiP</button>
+                <button type="button" onclick="fullscreenPlayback()" aria-label="Fullscreen playback">⛶</button>
+                <button type="button" onclick="sharePlayback()" aria-label="Share current media">↗ SHARE</button>
+            </div>
             <div id="player-source-switcher" class="source-switcher" aria-label="Server or source selector"></div>
 
             <!-- PASTE & PLAY PANEL -->
@@ -1540,15 +1558,68 @@
             savePlaybackState({ url, title: title !== 'Stream HD' ? title : (context.title || 'Stream HD'), artwork: artwork || context.artwork || '', kind: media.tagName === 'AUDIO' ? 'audio' : (/\.m3u8(?:$|\?)/i.test(url) ? 'hls' : 'video'), currentTime: Number(media.currentTime || 0), duration: Number.isFinite(media.duration) ? media.duration : 0 });
             updateMediaSession({ title, artwork });
         }
+        function getActiveNativeMedia() {
+            const audio = document.getElementById('audio-player');
+            const video = document.getElementById('native-video');
+            if (audio && audio.style.display !== 'none' && (audio.src || activePlaybackSource) && !audio.paused) return audio;
+            if (video && video.style.display !== 'none' && (video.src || activePlaybackSource)) return video;
+            if (audio && audio.style.display !== 'none' && (audio.src || activePlaybackSource)) return audio;
+            return null;
+        }
+        function formatPlaybackTime(seconds) {
+            if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+            const total = Math.floor(seconds); const hours = Math.floor(total / 3600); const minutes = Math.floor((total % 3600) / 60); const secs = total % 60;
+            return `${hours ? `${hours}:` : ''}${hours ? String(minutes).padStart(2, '0') : minutes}:${String(secs).padStart(2, '0')}`;
+        }
+        function updatePlaybackDock() {
+            const dock = document.getElementById('playback-dock');
+            const media = getActiveNativeMedia();
+            if (!dock) return;
+            dock.classList.toggle('active', Boolean(media));
+            if (!media) return;
+            const toggle = document.getElementById('playback-toggle');
+            if (toggle) { toggle.textContent = media.paused ? '▶ PLAY' : '❚❚ PAUSE'; toggle.setAttribute('aria-label', media.paused ? 'Play' : 'Pause'); }
+            const time = document.getElementById('playback-time');
+            if (time) time.textContent = `${formatPlaybackTime(media.currentTime)} / ${Number.isFinite(media.duration) ? formatPlaybackTime(media.duration) : 'LIVE'}`;
+            const speed = document.getElementById('playback-speed');
+            if (speed && Number.isFinite(media.playbackRate)) speed.value = String(media.playbackRate);
+        }
+        function seekPlayback(offset) {
+            const media = getActiveNativeMedia();
+            if (!media || !Number.isFinite(media.duration)) return showToast('SEEK IS NOT AVAILABLE FOR THIS LIVE STREAM');
+            media.currentTime = Math.max(0, Math.min(media.duration, media.currentTime + Number(offset || 0)));
+            updatePlaybackDock();
+        }
+        function togglePlayback() {
+            const media = getActiveNativeMedia();
+            if (!media) return showToast('SELECT AUDIO OR VIDEO FIRST');
+            const action = media.paused ? media.play() : Promise.resolve(media.pause());
+            Promise.resolve(action).then(updatePlaybackDock).catch(() => showToast('PRESS THE PLAYER PLAY CONTROL'));
+        }
+        function setPlaybackRate(value) {
+            const media = getActiveNativeMedia();
+            const rate = Number(value);
+            if (media && [0.75, 1, 1.25, 1.5, 2].includes(rate)) { media.playbackRate = rate; showToast(`PLAYBACK SPEED ${rate}×`); }
+        }
+        async function fullscreenPlayback() {
+            const target = document.getElementById('stage');
+            if (!target) return;
+            try { if (document.fullscreenElement) await document.exitFullscreen(); else await target.requestFullscreen(); } catch { showToast('FULLSCREEN IS NOT AVAILABLE'); }
+        }
+        async function sharePlayback() {
+            const title = activePlayerContext.title || 'Stream HD media';
+            const shareData = { title, text: `Watch ${title} on Stream HD`, url: activePlaybackSource || location.href };
+            try { if (navigator.share) await navigator.share(shareData); else { await navigator.clipboard.writeText(shareData.url); showToast('MEDIA LINK COPIED'); } } catch (error) { if (error?.name !== 'AbortError') showToast('SHARING IS NOT AVAILABLE'); }
+        }
         ['audio-player', 'native-video'].forEach(id => {
             const media = document.getElementById(id);
             if (!media) return;
-            media.addEventListener('play', () => { requestWakeLock(); persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); });
-            media.addEventListener('pause', () => persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork));
-            media.addEventListener('timeupdate', () => { if (media.currentTime > 0) persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); });
-            media.addEventListener('loadedmetadata', () => persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork));
+            media.addEventListener('play', () => { requestWakeLock(); persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
+            media.addEventListener('pause', () => { persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
+            media.addEventListener('timeupdate', () => { if (media.currentTime > 0) persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
+            media.addEventListener('loadedmetadata', () => { persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
             media.addEventListener('error', () => { setPlayerStatus(`${id === 'audio-player' ? 'Audio' : 'Video'} source failed to load.`, [{ label: '↻ RETRY', onClick: () => playDirectMedia(activePlaybackSource, activePlayerContext.title || 'Stream HD', id === 'audio-player' ? 'audio' : '') }]); });
-            media.addEventListener('ended', () => { clearPlaybackState(); activePlaybackSource = ''; });
+            media.addEventListener('ended', () => { clearPlaybackState(); activePlaybackSource = ''; updatePlaybackDock(); });
         });
         document.addEventListener('visibilitychange', () => {
             const audio = document.getElementById('audio-player'); const video = document.getElementById('native-video');
@@ -1678,6 +1749,8 @@
         }
         function hideAllPlayers() {
             document.body.classList.remove('search-first');
+            activePlaybackSource = '';
+            document.getElementById('playback-dock')?.classList.remove('active');
             const emptyState = document.getElementById('player-empty-state');
             if (emptyState) emptyState.style.display = 'none';
             if (activeHls) { activeHls.destroy(); activeHls = null; }
@@ -1762,6 +1835,18 @@
             const rawUrl = input.value.trim();
             if (!rawUrl) return showToast('PASTE A MEDIA URL FIRST');
             playDirectMedia(rawUrl, 'Pasted media');
+        }
+        function consumeSharedMedia() {
+            try {
+                const params = new URLSearchParams(location.search);
+                const shared = params.get('url') || params.get('text') || '';
+                const safe = safeWebUrl(shared);
+                if (!safe) return;
+                const input = document.getElementById('paste-link-input');
+                if (input) input.value = safe;
+                history.replaceState({}, document.title, location.pathname + location.hash);
+                setTimeout(() => { playDirectMedia(safe, params.get('title') || 'Shared media'); showToast('OPENED SHARED MEDIA LINK'); }, 400);
+            } catch {}
         }
 
         async function downloadMedia(rawUrl, filename = 'streamhd-media') {
@@ -2627,12 +2712,13 @@
             const kind = file.type.startsWith('audio/') ? 'audio' : 'video';
             hideAllPlayers();
             if (kind === 'audio') {
-                const audio = document.getElementById('audio-player'); audio.src = localObjectUrl; audio.style.display = 'block'; audio.load();
+                const audio = document.getElementById('audio-player'); activePlaybackSource = localObjectUrl; audio.src = localObjectUrl; audio.style.display = 'block'; audio.load();
                 audio.play().catch(() => setPlayerStatus('Audio is ready. Press Play to start.'));
             } else {
                 document.getElementById('player').style.display = 'block'; art.switchUrl(localObjectUrl);
             }
             setPlayerStatus(kind === 'audio' ? 'Audio file playing' : 'Video file playing');
+            updatePlaybackDock();
             showToast(`OPENED LOCAL ${kind.toUpperCase()}: ${file.name}`);
             event.target.value = '';
         }
@@ -2829,6 +2915,7 @@
             }
             renderChannels();
             offerLastPlayback();
+            consumeSharedMedia();
 
             setTimeout(() => {
                 const splash = document.getElementById('splash-screen');

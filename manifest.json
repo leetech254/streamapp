@@ -17,5 +17,11 @@
   ],
   "shortcuts": [
     { "name": "Open Stream HD", "short_name": "Stream HD", "url": "/", "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
-  ]
+  ],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  }
 }
