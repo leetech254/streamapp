@@ -1184,6 +1184,10 @@
         }
         window.addEventListener('online', updateNetworkStatus);
         window.addEventListener('offline', updateNetworkStatus);
+        window.addEventListener('online', () => {
+            const media = getActiveNativeMedia?.();
+            if (media && media.paused && activePlaybackSource) setPlayerStatus('Connection restored. Playback is ready to resume.', [{ label: '▶ RESUME', onClick: () => media.play().then(() => setPlayerStatus('Video playing')).catch(() => showToast('PRESS THE PLAYER PLAY CONTROL')) }]);
+        });
         updateNetworkStatus();
 
         function installApp() {
@@ -1522,7 +1526,13 @@
         let activeHls = null;
         let wakeLock = null;
         let activePlaybackSource = '';
+        let activePlaybackKind = '';
         const PLAYBACK_STATE_KEY = 'streamhd_last_playback';
+        const PLAYBACK_RATE_KEY = 'streamhd_playback_rate';
+        function getPlaybackRate() {
+            try { const rate = Number(localStorage.getItem(PLAYBACK_RATE_KEY)); return [0.75, 1, 1.25, 1.5, 2].includes(rate) ? rate : 1; } catch { return 1; }
+        }
+        function savePlaybackRate(rate) { try { localStorage.setItem(PLAYBACK_RATE_KEY, String(rate)); } catch {} }
         function savePlaybackState(state) {
             if (!state || !state.url) return;
             try { localStorage.setItem(PLAYBACK_STATE_KEY, JSON.stringify({ ...state, savedAt: Date.now() })); } catch {}
@@ -1599,7 +1609,7 @@
         function setPlaybackRate(value) {
             const media = getActiveNativeMedia();
             const rate = Number(value);
-            if (media && [0.75, 1, 1.25, 1.5, 2].includes(rate)) { media.playbackRate = rate; showToast(`PLAYBACK SPEED ${rate}×`); }
+            if ([0.75, 1, 1.25, 1.5, 2].includes(rate)) { savePlaybackRate(rate); if (media) media.playbackRate = rate; showToast(`PLAYBACK SPEED ${rate}×`); }
         }
         async function fullscreenPlayback() {
             const target = document.getElementById('stage');
@@ -1617,9 +1627,18 @@
             media.addEventListener('play', () => { requestWakeLock(); persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
             media.addEventListener('pause', () => { persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
             media.addEventListener('timeupdate', () => { if (media.currentTime > 0) persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
-            media.addEventListener('loadedmetadata', () => { persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
-            media.addEventListener('error', () => { setPlayerStatus(`${id === 'audio-player' ? 'Audio' : 'Video'} source failed to load.`, [{ label: '↻ RETRY', onClick: () => playDirectMedia(activePlaybackSource, activePlayerContext.title || 'Stream HD', id === 'audio-player' ? 'audio' : '') }]); });
+            media.addEventListener('loadedmetadata', () => { media.playbackRate = getPlaybackRate(); persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
+            media.addEventListener('error', () => { setPlayerStatus(`${id === 'audio-player' ? 'Audio' : 'Video'} source failed to load.`, [{ label: '↻ RETRY', onClick: () => playDirectMedia(activePlaybackSource, activePlayerContext.title || 'Stream HD', activePlaybackKind || (id === 'audio-player' ? 'audio' : 'video')) }]); });
             media.addEventListener('ended', () => { clearPlaybackState(); activePlaybackSource = ''; updatePlaybackDock(); });
+        });
+        document.addEventListener('keydown', event => {
+            if (event.target && /input|textarea|select/i.test(event.target.tagName)) return;
+            const media = getActiveNativeMedia();
+            if (!media) return;
+            if (event.key === ' ' || event.key.toLowerCase() === 'k') { event.preventDefault(); togglePlayback(); }
+            else if (event.key === 'ArrowLeft') { event.preventDefault(); seekPlayback(-10); }
+            else if (event.key === 'ArrowRight') { event.preventDefault(); seekPlayback(30); }
+            else if (event.key === 'f') { event.preventDefault(); fullscreenPlayback(); }
         });
         document.addEventListener('visibilitychange', () => {
             const audio = document.getElementById('audio-player'); const video = document.getElementById('native-video');
@@ -1750,6 +1769,7 @@
         function hideAllPlayers() {
             document.body.classList.remove('search-first');
             activePlaybackSource = '';
+            activePlaybackKind = '';
             document.getElementById('playback-dock')?.classList.remove('active');
             const emptyState = document.getElementById('player-empty-state');
             if (emptyState) emptyState.style.display = 'none';
@@ -1772,6 +1792,8 @@
             video.style.display = 'block';
             video.controls = true; video.autoplay = true; video.playsInline = true;
             activePlaybackSource = url;
+            activePlaybackKind = kind;
+            video.playbackRate = getPlaybackRate();
             updateMediaSession({ title: activePlayerContext.title || 'Stream HD', artwork: activePlayerContext.artwork || '' });
             savePlaybackState({ url, title: activePlayerContext.title || 'Stream HD', artwork: activePlayerContext.artwork || '', kind, currentTime: 0 });
             if (activeHls) { activeHls.destroy(); activeHls = null; }
@@ -1814,9 +1836,11 @@
             }
             if (yt && (yt.channel || yt.channelPage)) return youtubeChannelFallback(title, yt.channel || '', yt.channelPage || '');
             const kind = forcedKind || mediaKind(url);
+            activePlaybackKind = kind;
             if (kind === 'audio') {
                 const audio = document.getElementById('audio-player');
                 activePlaybackSource = url;
+                audio.playbackRate = getPlaybackRate();
                 audio.src = url; audio.style.display = 'block'; audio.load();
                 audio.onerror = () => setPlayerStatus('Audio source could not be loaded.', [{ label: '↻ RETRY', onClick: () => playDirectMedia(url, title, 'audio') }]);
                 updateMediaSession({ title });
@@ -1836,11 +1860,17 @@
             if (!rawUrl) return showToast('PASTE A MEDIA URL FIRST');
             playDirectMedia(rawUrl, 'Pasted media');
         }
+        function extractSharedUrl(value) {
+            const text = String(value || '').trim();
+            const direct = safeWebUrl(text);
+            if (direct) return direct;
+            const match = text.match(/https?:\/\/[^\s<>"']+/i);
+            return match ? safeWebUrl(match[0].replace(/[),.;!?]+$/, '')) : '';
+        }
         function consumeSharedMedia() {
             try {
                 const params = new URLSearchParams(location.search);
-                const shared = params.get('url') || params.get('text') || '';
-                const safe = safeWebUrl(shared);
+                const safe = extractSharedUrl(params.get('url') || params.get('text') || '');
                 if (!safe) return;
                 const input = document.getElementById('paste-link-input');
                 if (input) input.value = safe;
@@ -2711,6 +2741,7 @@
             localObjectUrl = URL.createObjectURL(file);
             const kind = file.type.startsWith('audio/') ? 'audio' : 'video';
             hideAllPlayers();
+            activePlaybackKind = kind;
             if (kind === 'audio') {
                 const audio = document.getElementById('audio-player'); activePlaybackSource = localObjectUrl; audio.src = localObjectUrl; audio.style.display = 'block'; audio.load();
                 audio.play().catch(() => setPlayerStatus('Audio is ready. Press Play to start.'));
