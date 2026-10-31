@@ -182,7 +182,7 @@
         .playback-dock .playback-time { min-width:92px; color:#8fefff; font:600 .68rem 'Source Code Pro',monospace; text-align:center; }
         @media (max-width:700px) { .playback-dock { gap:5px; padding:7px 4px; } .playback-dock button,.playback-dock select { padding:6px 7px; font-size:.61rem; } .playback-dock .playback-time { min-width:78px; } }
         .media-tools { display:flex; gap:7px; flex-wrap:wrap; align-items:center; width:100%; margin-top:8px; }
-        .media-tools input { flex:1 1 180px; min-width:0; min-height:34px; box-sizing:border-box; border:1px solid rgba(255,215,0,.28); border-radius:8px; background:#050505; color:#eee; padding:7px 10px; font:600 .68rem 'Source Code Pro',monospace; }
+        .media-tools input, .media-tools select { flex:1 1 180px; min-width:0; min-height:34px; box-sizing:border-box; border:1px solid rgba(255,215,0,.28); border-radius:8px; background:#050505; color:#eee; padding:7px 10px; font:600 .68rem 'Source Code Pro',monospace; }
         .media-tools button { min-height:34px; border:1px solid rgba(0,243,255,.38); border-radius:8px; background:#080808; color:#8fefff; padding:7px 10px; font:700 .66rem 'Source Code Pro',monospace; cursor:pointer; }
         .media-tools button:hover,.media-tools button:focus-visible { background:var(--primary); color:#050505; outline:2px solid #fff; outline-offset:2px; }
         .playlist-panel { display:none; width:100%; box-sizing:border-box; margin-top:8px; padding:9px; border:1px solid rgba(255,215,0,.24); border-radius:10px; background:rgba(0,0,0,.68); }
@@ -1102,7 +1102,12 @@
             </div>
             <div class="media-tools" aria-label="Subtitle and playlist tools">
                 <input id="subtitle-url" type="url" placeholder="Subtitle VTT URL (native video)" aria-label="Subtitle VTT URL">
-                <button type="button" onclick="loadSubtitleTrack()">CC LOAD SUBTITLES</button>
+                <input id="subtitle-language" type="text" maxlength="40" placeholder="Language e.g. English" aria-label="Subtitle language">
+                <select id="subtitle-track-select" aria-label="Active subtitle language" onchange="selectSubtitleTrack(this.value)"><option value="">No subtitles loaded</option></select>
+                <button type="button" onclick="loadSubtitleTrack()">＋ ADD LANGUAGE</button>
+                <button type="button" onclick="adjustSubtitleOffset(-0.5)">CC −0.5s</button>
+                <button type="button" onclick="adjustSubtitleOffset(0.5)">CC ＋0.5s</button>
+                <button type="button" onclick="resetSubtitleOffset()">CC AUTO SYNC</button>
                 <button type="button" onclick="addCurrentToPlaylist()">＋ ADD TO PLAYLIST</button>
                 <button type="button" onclick="togglePlaylist()">☷ PLAYLIST</button>
             </div>
@@ -1602,14 +1607,69 @@
         function movePlaylistItem(index, direction) { const target = index + direction; if (target < 0 || target >= customPlaylist.length) return; [customPlaylist[index], customPlaylist[target]] = [customPlaylist[target], customPlaylist[index]]; if (activePlaylistIndex === index) activePlaylistIndex = target; else if (activePlaylistIndex === target) activePlaylistIndex = index; savePlaylist(); renderPlaylist(); }
         function removePlaylistItem(index) { customPlaylist.splice(index, 1); if (activePlaylistIndex === index) activePlaylistIndex = -1; else if (activePlaylistIndex > index) activePlaylistIndex--; savePlaylist(); renderPlaylist(); }
         function clearPlaylist() { customPlaylist = []; activePlaylistIndex = -1; savePlaylist(); renderPlaylist(); showToast('PLAYLIST CLEARED'); }
+        const SUBTITLE_PREFS_KEY = 'streamhd_subtitle_preferences_v1';
+        let subtitleTracks = [];
+        let activeSubtitleIndex = -1;
+        function readSubtitlePrefs() { const prefs = readJsonStorage(SUBTITLE_PREFS_KEY, {}); return prefs && typeof prefs === 'object' ? prefs : {}; }
+        function saveSubtitlePrefs(prefs) { try { localStorage.setItem(SUBTITLE_PREFS_KEY, JSON.stringify(prefs)); } catch {} }
+        function subtitlePreferenceKey(item) { return `${item.lang || 'und'}|${item.url}`; }
+        function subtitleLanguageCode(label) {
+            const normalized = String(label || '').trim().toLowerCase();
+            const known = { english: 'en', en: 'en', spanish: 'es', español: 'es', espanol: 'es', french: 'fr', français: 'fr', francais: 'fr', german: 'de', deutsch: 'de', italian: 'it', italiano: 'it', portuguese: 'pt', português: 'pt', portugues: 'pt', arabic: 'ar', العربية: 'ar', swahili: 'sw', kiswahili: 'sw', japanese: 'ja', 日本語: 'ja', korean: 'ko', 한국어: 'ko', chinese: 'zh', 中文: 'zh', hindi: 'hi' };
+            if (known[normalized]) return known[normalized];
+            return (normalized.replace(/[^a-z]+/g, '-').replace(/^-|-$/g, '').slice(0, 12) || 'und');
+        }
+        function refreshSubtitleSelector() {
+            const select = document.getElementById('subtitle-track-select');
+            if (!select) return;
+            select.replaceChildren();
+            const off = document.createElement('option'); off.value = ''; off.textContent = 'Subtitles off'; select.appendChild(off);
+            subtitleTracks.forEach((item, index) => { const option = document.createElement('option'); option.value = String(index); option.textContent = `${item.label} (${item.offset >= 0 ? '+' : ''}${item.offset.toFixed(1)}s)`; select.appendChild(option); });
+            select.value = activeSubtitleIndex >= 0 ? String(activeSubtitleIndex) : '';
+        }
+        function applySubtitleOffset(item) {
+            const cues = item?.element?.track?.cues;
+            if (!cues) return;
+            if (!item.cueBases || item.cueBases.length !== cues.length) item.cueBases = Array.from(cues).map(cue => ({ cue, start: cue.startTime, end: cue.endTime }));
+            item.cueBases.forEach(base => { try { base.cue.startTime = Math.max(0, base.start + item.offset); base.cue.endTime = Math.max(base.cue.startTime, base.end + item.offset); } catch {} });
+        }
+        function selectSubtitleTrack(value) {
+            const video = document.getElementById('native-video');
+            activeSubtitleIndex = value === '' ? -1 : Number(value);
+            subtitleTracks.forEach((item, index) => { if (item.element) item.element.track.mode = index === activeSubtitleIndex ? 'showing' : 'hidden'; });
+            refreshSubtitleSelector();
+            if (video && activeSubtitleIndex >= 0) showToast(`${subtitleTracks[activeSubtitleIndex]?.label || 'SUBTITLES'} ENABLED`);
+        }
+        function adjustSubtitleOffset(delta) {
+            const item = subtitleTracks[activeSubtitleIndex];
+            if (!item) return showToast('SELECT A SUBTITLE LANGUAGE FIRST');
+            item.offset = Math.max(-30, Math.min(30, Number((item.offset + Number(delta || 0)).toFixed(1))));
+            applySubtitleOffset(item); refreshSubtitleSelector();
+            const prefs = readSubtitlePrefs(); prefs[subtitlePreferenceKey(item)] = item.offset; saveSubtitlePrefs(prefs);
+            showToast(`${item.label} SYNC ${item.offset >= 0 ? '+' : ''}${item.offset.toFixed(1)}s`);
+        }
+        function resetSubtitleOffset() {
+            const item = subtitleTracks[activeSubtitleIndex];
+            if (!item) return showToast('SELECT A SUBTITLE LANGUAGE FIRST');
+            item.offset = 0; applySubtitleOffset(item); refreshSubtitleSelector();
+            const prefs = readSubtitlePrefs(); prefs[subtitlePreferenceKey(item)] = 0; saveSubtitlePrefs(prefs); showToast(`${item.label} AUTO SYNC RESET`);
+        }
         function loadSubtitleTrack() {
             const video = document.getElementById('native-video');
             const url = safeWebUrl(document.getElementById('subtitle-url')?.value.trim());
             if (!video || video.style.display === 'none') return showToast('START A NATIVE VIDEO BEFORE LOADING SUBTITLES');
             if (!url) return showToast('PASTE A VALID WEBVTT SUBTITLE URL');
-            video.querySelectorAll('track').forEach(track => track.remove());
-            const track = document.createElement('track'); track.kind = 'subtitles'; track.label = 'English'; track.srclang = 'en'; track.src = url; track.default = true;
-            video.appendChild(track); showToast('SUBTITLES LOADED — USE CC IN THE PLAYER');
+            const label = String(document.getElementById('subtitle-language')?.value.trim() || 'English').slice(0, 40);
+            const lang = subtitleLanguageCode(label);
+            const existing = subtitleTracks.findIndex(item => item.url === url);
+            if (existing >= 0) { activeSubtitleIndex = existing; selectSubtitleTrack(String(existing)); return showToast('THIS SUBTITLE LANGUAGE IS ALREADY LOADED'); }
+            const prefs = readSubtitlePrefs();
+            const item = { url, label, lang, offset: Number(prefs[`${lang}|${url}`] || 0), element: null, cueBases: null };
+            const track = document.createElement('track'); track.kind = 'subtitles'; track.label = label; track.srclang = lang; track.src = url; track.default = false;
+            track.addEventListener('load', () => applySubtitleOffset(item));
+            video.appendChild(track); item.element = track; subtitleTracks.push(item); activeSubtitleIndex = subtitleTracks.length - 1; refreshSubtitleSelector(); selectSubtitleTrack(String(activeSubtitleIndex));
+            document.getElementById('subtitle-url').value = ''; document.getElementById('subtitle-language').value = '';
+            showToast(`${label.toUpperCase()} SUBTITLES LOADED`);
         }
         function savePlaybackState(state) {
             if (!state || !state.url) return;
@@ -1717,6 +1777,8 @@
             else if (event.key === 'ArrowLeft') { event.preventDefault(); seekPlayback(-10); }
             else if (event.key === 'ArrowRight') { event.preventDefault(); seekPlayback(30); }
             else if (event.key === 'f') { event.preventDefault(); fullscreenPlayback(); }
+            else if (event.key === '[') { event.preventDefault(); adjustSubtitleOffset(-0.5); }
+            else if (event.key === ']') { event.preventDefault(); adjustSubtitleOffset(0.5); }
         });
         document.addEventListener('visibilitychange', () => {
             const audio = document.getElementById('audio-player'); const video = document.getElementById('native-video');
@@ -1848,6 +1910,7 @@
             document.body.classList.remove('search-first');
             activePlaybackSource = '';
             activePlaybackKind = '';
+            subtitleTracks = []; activeSubtitleIndex = -1; refreshSubtitleSelector();
             document.getElementById('playback-dock')?.classList.remove('active');
             const emptyState = document.getElementById('player-empty-state');
             if (emptyState) emptyState.style.display = 'none';
