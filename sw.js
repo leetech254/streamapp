@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stream-hd-shell-v12';
+const CACHE_NAME = 'stream-hd-shell-v13';
 const APP_SHELL = [
   '/',
   '/index.html',

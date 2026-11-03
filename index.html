@@ -185,6 +185,8 @@
         .media-tools input, .media-tools select { flex:1 1 180px; min-width:0; min-height:34px; box-sizing:border-box; border:1px solid rgba(255,215,0,.28); border-radius:8px; background:#050505; color:#eee; padding:7px 10px; font:600 .68rem 'Source Code Pro',monospace; }
         .media-tools button { min-height:34px; border:1px solid rgba(0,243,255,.38); border-radius:8px; background:#080808; color:#8fefff; padding:7px 10px; font:700 .66rem 'Source Code Pro',monospace; cursor:pointer; }
         .media-tools button:hover,.media-tools button:focus-visible { background:var(--primary); color:#050505; outline:2px solid #fff; outline-offset:2px; }
+        .playback-dock button:disabled { opacity:.45; cursor:not-allowed; }
+        #pip-toggle.pip-active { border-color:var(--primary); color:var(--primary); background:rgba(255,215,0,.12); }
         .playlist-panel { display:none; width:100%; box-sizing:border-box; margin-top:8px; padding:9px; border:1px solid rgba(255,215,0,.24); border-radius:10px; background:rgba(0,0,0,.68); }
         .playlist-panel.active { display:block; }
         .playlist-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--primary); font:700 .7rem 'Orbitron',sans-serif; margin-bottom:7px; }
@@ -1096,7 +1098,7 @@
                 <select id="playback-speed" onchange="setPlaybackRate(this.value)" aria-label="Playback speed">
                     <option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
                 </select>
-                <button type="button" onclick="togglePiP()" aria-label="Picture in picture">▣ PiP</button>
+                <button id="pip-toggle" type="button" onclick="togglePiP()" aria-label="Enter picture in picture">▣ PiP</button>
                 <button type="button" onclick="fullscreenPlayback()" aria-label="Fullscreen playback">⛶</button>
                 <button type="button" onclick="sharePlayback()" aria-label="Share current media">↗ SHARE</button>
             </div>
@@ -1723,6 +1725,7 @@
             const dock = document.getElementById('playback-dock');
             const media = getActiveNativeMedia();
             if (!dock) return;
+            updatePiPControl();
             dock.classList.toggle('active', Boolean(media));
             if (!media) return;
             const toggle = document.getElementById('playback-toggle');
@@ -1919,7 +1922,7 @@
                 const el = document.getElementById(id); if (el) el.style.display = 'none';
             });
             const nativeVideo = document.getElementById('native-video');
-            if (nativeVideo) { nativeVideo.pause(); nativeVideo.querySelectorAll('track').forEach(track => track.remove()); nativeVideo.removeAttribute('src'); nativeVideo.load(); }
+            if (nativeVideo) { if (document.pictureInPictureElement === nativeVideo && document.exitPictureInPicture) document.exitPictureInPicture().catch(() => {}); if (nativeVideo.webkitPresentationMode === 'picture-in-picture' && nativeVideo.webkitSetPresentationMode) nativeVideo.webkitSetPresentationMode('inline'); nativeVideo.pause(); nativeVideo.querySelectorAll('track').forEach(track => track.remove()); nativeVideo.removeAttribute('src'); nativeVideo.load(); }
             const audio = document.getElementById('audio-player');
             if (audio) { audio.pause(); audio.removeAttribute('src'); audio.load(); }
             if (art) { try { art.pause(); } catch {} }
@@ -2897,16 +2900,45 @@
             event.target.value = '';
         }
 
-        async function togglePiP() {
-            const video = document.querySelector('video');
-            if(video && video.readyState > 0 && !document.pictureInPictureElement) {
-                try { await video.requestPictureInPicture(); } catch(e) { showToast("PiP NOT SUPPORTED FOR THIS STREAM"); }
-            } else if (document.pictureInPictureElement) {
-                document.exitPictureInPicture();
-            } else {
-                showToast("PiP REQUIRES NATIVE BROWSER SUPPORT");
-            }
+        function getPiPVideo() {
+            const video = document.getElementById('native-video');
+            if (!video || video.style.display === 'none' || !video.src) return null;
+            return video;
         }
+        function isPiPActive(video = getPiPVideo()) {
+            return Boolean((video && video.webkitPresentationMode === 'picture-in-picture') || (document.pictureInPictureElement && (!video || document.pictureInPictureElement === video)));
+        }
+        function updatePiPControl() {
+            const button = document.getElementById('pip-toggle');
+            if (!button) return;
+            const video = getPiPVideo();
+            const supported = Boolean(video && ((document.pictureInPictureEnabled && typeof video.requestPictureInPicture === 'function' && !video.disablePictureInPicture) || typeof video.webkitSetPresentationMode === 'function'));
+            const active = isPiPActive(video);
+            button.disabled = !supported;
+            button.classList.toggle('pip-active', active);
+            button.textContent = active ? '▣ EXIT PiP' : '▣ PiP';
+            button.setAttribute('aria-label', active ? 'Exit picture in picture' : 'Enter picture in picture');
+            button.title = supported ? (active ? 'Exit picture-in-picture' : 'Enter picture-in-picture') : 'Picture-in-picture is unavailable for this media or browser';
+        }
+        async function togglePiP() {
+            const video = getPiPVideo();
+            if (!video) return showToast('PiP REQUIRES A NATIVE VIDEO STREAM');
+            try {
+                if (isPiPActive(video)) {
+                    if (document.pictureInPictureElement && document.exitPictureInPicture) await document.exitPictureInPicture();
+                    else if (video.webkitSetPresentationMode) video.webkitSetPresentationMode('inline');
+                    return;
+                }
+                if (document.pictureInPictureEnabled && typeof video.requestPictureInPicture === 'function' && !video.disablePictureInPicture) await video.requestPictureInPicture();
+                else if (typeof video.webkitSetPresentationMode === 'function') video.webkitSetPresentationMode('picture-in-picture');
+                else return showToast('PICTURE-IN-PICTURE IS NOT SUPPORTED ON THIS DEVICE');
+            } catch (error) {
+                showToast(error?.name === 'NotAllowedError' ? 'START VIDEO PLAYBACK BEFORE ENTERING PiP' : 'PiP IS UNAVAILABLE FOR THIS STREAM');
+            } finally { updatePiPControl(); }
+        }
+        ['enterpictureinpicture', 'leavepictureinpicture', 'loadedmetadata', 'emptied', 'pause'].forEach(eventName => document.getElementById('native-video')?.addEventListener(eventName, updatePiPControl));
+        document.addEventListener('enterpictureinpicture', updatePiPControl);
+        document.addEventListener('leavepictureinpicture', updatePiPControl);
 
         function triggerLoader() {
             const loader = document.getElementById('loader');
