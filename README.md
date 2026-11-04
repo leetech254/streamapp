@@ -6,13 +6,19 @@ A responsive single-page media player for sources that you own or are authorized
 
 - Direct audio, video, HLS (`.m3u8`), and YouTube links; local audio/video files
 - TMDB movie/series metadata and search
-- Installable PWA app shell with offline shell caching
+- Installable PWA with offline shell, subtitle, HLS, and bounded media caching
 - Phone/tablet responsive layout, keyboard/TV remote navigation, and Picture-in-Picture where supported
 - Browser-local library backup/import and channel management
 
 ## Deploy
 
-Deploy the repository root to Vercel. Keep `index.html`, `api/`, `vercel.json`, `manifest.json`, `sw.js`, and `icon.svg` at the root. The service worker caches the app shell only; media streams remain online.
+Deploy the repository root to Vercel. Keep `index.html`, `api/`, `vercel.json`, `manifest.json`, `sw.js`, and `icon.svg` at the root.
+
+### Offline caching
+
+The service worker keeps separate versioned caches for the app shell, subtitles, and media. It uses network-first behavior for subtitles so fresh language tracks are preferred, then falls back to a cached WebVTT/SRT track when offline. Complete audio/video responses, HLS manifests, and common HLS segments can be cached for offline playback; cached complete media is replayed as byte ranges when the browser requests `Range` responses. Partial `206` network responses are not cached because an individual range is not a complete offline asset.
+
+Media caching is bounded to 12 entries and skips responses advertised above 250 MB. Subtitle caching is bounded to 40 entries. These limits prevent a playlist or repeated streams from filling the device indefinitely. Offline playback still depends on the upstream server permitting the browser's request and on the media being fully cached before going offline; DRM, provider-authenticated streams, and uncached live streams cannot be made offline by the service worker.
 
 ## TMDB setup
 
