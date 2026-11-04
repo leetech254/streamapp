@@ -1,4 +1,4 @@
-const VERSION = 'v14';
+const VERSION = 'v15';
 const SHELL_CACHE = `stream-hd-shell-${VERSION}`;
 const MEDIA_CACHE = `stream-hd-media-${VERSION}`;
 const SUBTITLE_CACHE = `stream-hd-subtitles-${VERSION}`;
@@ -154,13 +154,14 @@ self.addEventListener('fetch', event => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET') return;
-  if (url.origin === self.location.origin && url.pathname.startsWith('/api/')) return;
+  const isMovieApiMedia = url.origin === self.location.origin && url.pathname === '/api/movieapi' && url.searchParams.get('action') === 'media';
+  if (url.origin === self.location.origin && url.pathname.startsWith('/api/') && !isMovieApiMedia) return;
 
   if (isSubtitleRequest(request, url)) {
     event.respondWith(subtitleFirst(request));
     return;
   }
-  if (isMediaRequest(request, url)) {
+  if (isMovieApiMedia || isMediaRequest(request, url)) {
     event.respondWith(mediaFirst(request));
     return;
   }

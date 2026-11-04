@@ -2658,8 +2658,8 @@
         async function fetchMovieApiResults(query, type = 'movie') {
             const resBox = document.getElementById('api-results');
             try {
-                const body = await movieApiFetch('search', { keyword: query, type });
-                const items = Array.isArray(body.data) ? body.data : Array.isArray(body.results) ? body.results : [];
+                const body = await movieApiFetch('catalog-search', { keyword: query, type });
+                const items = Array.isArray(body.data) ? body.data : Array.isArray(body.data?.items) ? body.data.items : Array.isArray(body.results) ? body.results : [];
                 document.getElementById('search-status').innerText = items.length ? `FOUND ${items.length} AUTHORIZED ${type === 'tv' ? 'SERIES' : 'MOVIES'}` : 'NO AUTHORIZED TITLES FOUND';
                 renderMovieApiResults(items, type);
             } catch (error) {
@@ -2672,10 +2672,11 @@
             const resBox = document.getElementById('api-results');
             resBox.replaceChildren();
             results.forEach(item => {
-                const id = String(item && item.id || '').trim(); if (!/^\d+$/.test(id)) return;
+                const id = String(item && (item.subjectId || item.id) || '').trim(); if (!/^\d+$/.test(id)) return;
                 const title = String(item.title || item.name || 'Untitled');
-                const year = String(item.year || item.release_year || '').slice(0, 4);
-                const img = safeWebUrl(item.poster || item.poster_min || item.poster_org || item.banner_mini) || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=222&color=ffd700&size=512`;
+                const year = String(item.year || item.release_year || item.releaseDate || '').slice(0, 4);
+                const cover = item.cover && typeof item.cover === 'object' ? item.cover.url : item.cover;
+                const img = safeWebUrl(cover || item.poster || item.poster_min || item.poster_org || item.banner_mini) || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=222&color=ffd700&size=512`;
                 const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play ${title}`);
                 const image = document.createElement('img'); image.src = img; image.alt = `${title} poster`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
                 const caption = document.createElement('span'); caption.textContent = `${title}${year ? ` (${year})` : ''} — AUTHORIZED API`; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
@@ -2697,15 +2698,18 @@
 
         function movieApiTrailer(item) {
             const trailers = Array.isArray(item && item.trailer_url_arr) ? item.trailer_url_arr : [];
-            return trailers.map(entry => safeWebUrl(entry && entry.url)).find(url => youtubeTarget(url)) || '';
+            const modernTrailer = item && item.trailer && item.trailer.videoAddress && item.trailer.videoAddress.url;
+            const modernUrl = safeWebUrl(modernTrailer);
+            return [...trailers.map(entry => safeWebUrl(entry && entry.url)).filter(url => youtubeTarget(url)), modernUrl].find(Boolean) || '';
         }
 
         async function playMovieApiItem(id, title, type = 'movie', season = '', episode = '', item = null) {
             try {
-                const params = { id, type, ...(type === 'tv' ? { season, episode } : {}) };
+                const params = item && item.subjectId ? { subjectId: item.subjectId, type, ...(type === 'tv' ? { season, episode } : {}) } : { id, type, ...(type === 'tv' ? { season, episode } : {}) };
                 const body = await movieApiFetch('stream', params);
                 const data = body && body.data ? body.data : body;
-                const candidates = [data && data.url, data && data.proxyUrl, data && data.proxy_url, data && data.stream_url, data && data.streamUrl, data && data.link, data && data.file, ...(Array.isArray(data && data.links) ? data.links.map(item => item && (item.proxyUrl || item.proxy_url || item.url || item.link || item.file)) : []), ...(Array.isArray(data && data.streams) ? data.streams.map(item => item && (item.proxyUrl || item.proxy_url || item.url || item.link || item.file)) : [])].map(safeWebUrl).filter(Boolean);
+                const resolveMediaUrl = value => { const text = String(value || '').trim(); if (!text) return ''; try { return safeWebUrl(text) || (text.startsWith('/') ? safeWebUrl(new URL(text, window.location.origin).href) : ''); } catch { return ''; } };
+                const candidates = [data && data.url, data && data.proxyUrl, data && data.proxy_url, data && data.stream_url, data && data.streamUrl, data && data.link, data && data.file, ...(Array.isArray(data && data.links) ? data.links.map(item => item && (item.proxyUrl || item.proxy_url || item.url || item.link || item.file)) : []), ...(Array.isArray(data && data.streams) ? data.streams.map(item => item && (item.proxyUrl || item.proxy_url || item.url || item.link || item.file)) : [])].map(resolveMediaUrl).filter(Boolean);
                 const streamUrl = candidates[0];
                 if (!streamUrl) throw new Error('MOVIE_API returned no playable stream URL');
                 activePlayerContext = { ...activePlayerContext, title, type, movieApiId: id, season, episode };

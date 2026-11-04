@@ -50,11 +50,16 @@ When you own or are authorized to use the Movie API, Stream HD exposes it throug
 
 ```text
 /api/movieapi?action=search&keyword=Avatar&type=movie
+/api/movieapi?action=catalog-search&keyword=Avatar&type=movie
 /api/movieapi?action=stream&id=3737&type=movie
+/api/movieapi?action=stream&subjectId=8906247916759695608&type=movie
+/api/movieapi?action=media&subjectId=8906247916759695608&type=movie
 /api/movieapi?action=stream&id=77&type=tv&season=1&episode=1
 ```
 
-The player controls include **AUTHORIZED MOVIE API** and **AUTHORIZED SERIES API** search actions. Movie results call the stream endpoint with the returned numeric ID. Series results ask for season and episode, then call the same endpoint with those parameters. Stream response URLs are accepted only after HTTP(S) validation and are played through the existing direct-media pipeline. The provider must return a playable, authorized URL; upstream errors such as HTTP 403 are surfaced to the user instead of being hidden.
+The player controls include **AUTHORIZED MOVIE API** and **AUTHORIZED SERIES API** search actions. Search now uses the provider's richer catalog endpoint first, preserving each result's `subjectId`, poster, release date, trailer, and subtitle metadata, then falls back to the legacy ShowBox search when needed. Modern results use the provider's BFF media proxy through `/api/movieapi?action=media&subjectId=...`; the proxy forwards HTTP Range requests, so seeking and native video playback work without exposing the upstream hostname in the page. Legacy ShowBox IDs still use the existing direct-stream route and its `/api/stream` fallback.
+
+The proxy also exposes the provider's caption lookup through `action=captions` for future subtitle URL discovery. It validates large numeric subject IDs separately from legacy IDs, limits TV season/episode values, forwards only safe resolution and language options, preserves media response headers, and returns clear upstream 403/502 errors instead of pretending playback succeeded. The provider must still authorize the source and make it available; a provider-side 403 cannot be bypassed by the app.
 
 Movie and series details load the official TMDB Watch Providers list using the saved region, the browser region, and global fallbacks (`KE`, `US`, `GB`, `CA`, `AU`, `ZA`, and `NG`). The selector prioritizes free, free-with-ads, and subscription options; rent/buy options are shown only when no free or subscription match is available. If the preferred regions have no low-friction option, the best matching global region is selected and shown in the heading. Availability is supplied by TMDB/JustWatch. TMDB provider records do not include embeddable streams or DRM access; full in-site playback requires an authorized source or a provider SDK that explicitly permits embedding.
 
