@@ -1496,6 +1496,7 @@
             try {
                 const parsed = new URL(url);
                 const source = `${parsed.pathname}${parsed.search}`.toLowerCase();
+                if (parsed.pathname === '/api/movieapi' && parsed.searchParams.get('action') === 'media') return 'video';
                 if (/\.(mp3|mp31|mp32|m4a|aac|wav|ogg|oga|opus|flac)(?:$|[?#&])/.test(source) || /(?:audio|format)=(?:mp3|mp31|mp32|m4a|aac|wav|ogg|oga|opus|flac)(?:$|&)/.test(source)) return 'audio';
                 if (/\.m3u8(?:$|[?#&])/.test(source) || /(?:url|format|type)=[^&]*m3u8/.test(source)) return 'hls';
                 if (/\.(mp4|m4v|webm|mov|ogv|mkv)(?:$|[?#&])/.test(source) || /(?:video|format|type)=(?:mp4|m4v|webm|mov|ogv|mkv)(?:$|&)/.test(source)) return 'video';
