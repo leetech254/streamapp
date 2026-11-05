@@ -27,6 +27,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/youtube-search",
+      "destination": "/api/youtube"
+    },
+    {
       "source": "/((?!api/).*)",
       "has": [
         {
