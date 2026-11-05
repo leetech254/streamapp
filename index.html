@@ -1469,6 +1469,28 @@
             }
             return body;
         }
+        async function probeAuthorizedMedia(url) {
+            let parsed;
+            try { parsed = new URL(url, window.location.origin); } catch { return; }
+            if (parsed.origin !== window.location.origin || parsed.pathname !== '/api/movieapi' || parsed.searchParams.get('action') !== 'media') return;
+            const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12000);
+            try {
+                const response = await fetch(parsed.href, { headers: { Range: 'bytes=0-1', Accept: 'video/mp4,video/*;q=0.9,audio/*;q=0.8,application/octet-stream;q=0.5' }, cache: 'no-store', signal: controller.signal });
+                const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+                if (!response.ok || contentType.includes('application/json') || (!contentType.includes('video/') && !contentType.includes('audio/') && !contentType.includes('application/octet-stream'))) {
+                    const body = await response.json().catch(() => ({}));
+                    const error = new Error(apiErrorText(body.error || body, `MOVIE_API_MEDIA_HTTP_${response.status}`));
+                    error.code = String(body.code || `MOVIE_API_MEDIA_HTTP_${response.status}`);
+                    error.retryable = body.retryable !== false;
+                    error.officialFallbackAvailable = body.officialFallbackAvailable === true;
+                    throw error;
+                }
+                await response.arrayBuffer();
+            } catch (error) {
+                if (error?.name === 'AbortError') { error.code = 'MOVIE_API_MEDIA_TIMEOUT'; error.retryable = true; }
+                throw error;
+            } finally { clearTimeout(timer); }
+        }
         async function watchmodeFetch(tmdbId, type, regions = getWatchRegion()) {
             const url = new URL('/api/watchmode', window.location.origin);
             url.search = new URLSearchParams({ tmdbId: String(tmdbId || ''), type: type === 'tv' ? 'tv' : 'movie', regions: `${regions},US` }).toString();
@@ -1805,6 +1827,7 @@
             if (!media) return;
             media.addEventListener('play', () => { requestWakeLock(); persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
             media.addEventListener('pause', () => { persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
+            media.addEventListener('playing', () => { setPlayerStatus(media.tagName === 'AUDIO' ? 'Audio playing' : 'Video playing'); updatePlaybackDock(); });
             media.addEventListener('timeupdate', () => { if (media.currentTime > 0) persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
             media.addEventListener('loadedmetadata', () => { media.playbackRate = getPlaybackRate(); persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
             media.addEventListener('error', () => { setPlayerStatus(`${id === 'audio-player' ? 'Audio' : 'Video'} source failed to load.`, [{ label: '↻ RETRY', onClick: () => playDirectMedia(activePlaybackSource, activePlayerContext.title || 'Stream HD', activePlaybackKind || (id === 'audio-player' ? 'audio' : 'video')) }]); });
@@ -2033,7 +2056,7 @@
             }
             if (kind === 'video' || kind === 'hls') {
                 playNativeVideo(url, kind);
-                setPlayerStatus(kind === 'hls' ? 'Live / HLS ready. Press Play if needed.' : 'Video ready. Press Play if needed.'); return true;
+                setPlayerStatus(kind === 'hls' ? 'Loading live / HLS stream…' : 'Loading video…'); return true;
             }
             setPlayerStatus('Unsupported media link.');
             showToast('UNSUPPORTED MEDIA LINK'); return false;
@@ -2843,8 +2866,9 @@
                 const streamUrl = candidates[0];
                 if (!streamUrl) throw new Error('MOVIE_API returned no playable stream URL');
                 activePlayerContext = { ...activePlayerContext, title, type, movieApiId: id, season, episode };
-                playDirectMedia(streamUrl, title, mediaKind(streamUrl) || 'video');
-                setPlayerStatus(type === 'tv' ? `AUTHORIZED API S${season} E${episode} playing` : 'AUTHORIZED API movie playing');
+                setPlayerStatus(type === 'tv' ? `Checking authorized API S${season} E${episode} media…` : 'Checking authorized API media…');
+                await probeAuthorizedMedia(streamUrl);
+                if (!playDirectMedia(streamUrl, title, mediaKind(streamUrl) || 'video')) throw new Error('MOVIE_API media player could not initialize');
             } catch (error) {
                 const providerMessage = apiErrorText(error.message, 'Provider unavailable');
                 const trailer = movieApiTrailer(item);
