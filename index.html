@@ -2226,6 +2226,40 @@
         function watchmodeTypeLabel(type) {
             return ({ sub: 'SUBSCRIPTION', rent: 'RENT', buy: 'BUY', free: 'FREE', tve: 'TV' }[String(type || '').toLowerCase()] || String(type || 'WATCH').toUpperCase());
         }
+        function renderProviderFallback(providerGroups, region, link, sourceLabel = 'TMDB') {
+            const status = document.getElementById('where-to-watch-status'); const list = document.getElementById('watchmode-list');
+            if (!status || !list) return false;
+            list.replaceChildren();
+            const providers = Object.entries(providerGroups || {}).flatMap(([type, items]) => (Array.isArray(items) ? items : []).map(item => ({ ...item, type })));
+            if (!providers.length || !validWatchmodeLink(link)) return false;
+            status.textContent = `Official availability in ${region} · links provided by ${sourceLabel}`;
+            providers.slice(0, 12).forEach(source => {
+                const card = document.createElement('article'); card.className = 'watchmode-card';
+                const main = document.createElement('div'); main.className = 'watchmode-card-main';
+                const name = document.createElement('div'); name.className = 'watchmode-card-name'; name.textContent = source.provider_name || source.name || 'Streaming provider';
+                const meta = document.createElement('div'); meta.className = 'watchmode-card-meta'; meta.textContent = `${watchmodeTypeLabel(source.type)} · ${region}`;
+                main.append(name, meta);
+                const actions = document.createElement('div'); actions.className = 'watchmode-card-actions';
+                const anchor = document.createElement('a'); anchor.href = validWatchmodeLink(link); anchor.target = '_blank'; anchor.rel = 'noopener noreferrer'; anchor.textContent = 'WATCH ON WEB'; anchor.setAttribute('aria-label', `Watch ${source.provider_name || 'title'} on the provider website`); actions.append(anchor);
+                card.append(main, actions); list.append(card);
+            });
+            list.hidden = false;
+            return true;
+        }
+        async function loadTmdbWatchProviderFallback(tmdbId, type, region) {
+            try {
+                const data = await tmdbFetch(`${type}/${encodeURIComponent(tmdbId)}/watch/providers`);
+                const result = data && data.results && (data.results[region] || data.results.US);
+                if (!result) return false;
+                return renderProviderFallback({
+                    ...(result.free ? { free: result.free } : {}),
+                    ...(result.ads ? { free: result.ads } : {}),
+                    ...(result.flatrate ? { sub: result.flatrate } : {}),
+                    ...(result.rent ? { rent: result.rent } : {}),
+                    ...(result.buy ? { buy: result.buy } : {})
+                }, result === data.results[region] ? region : 'US', result.link, 'TMDB');
+            } catch { return false; }
+        }
         function renderWatchmodeSources(sources, region) {
             const status = document.getElementById('where-to-watch-status'); const list = document.getElementById('watchmode-list');
             if (!status || !list) return;
@@ -2234,7 +2268,7 @@
                 if (!source) return false; const key = `${source.name || source.source_id}|${source.type}|${source.region}|${source.web_url || ''}`;
                 if (seen.has(key) || !watchmodeLink(source)) return false; seen.add(key); return true;
             }).sort((a, b) => (rank[a.type] ?? 9) - (rank[b.type] ?? 9));
-            if (!ordered.length) { status.textContent = `No official streaming links found for ${region}.`; list.hidden = true; return; }
+            if (!ordered.length) { status.textContent = `No Watchmode links found. Checking TMDB availability…`; list.hidden = true; return false; }
             status.textContent = `${ordered.length} official option${ordered.length === 1 ? '' : 's'} in ${region}`;
             ordered.slice(0, 12).forEach(source => {
                 const link = watchmodeLink(source); const card = document.createElement('article'); card.className = 'watchmode-card';
@@ -2247,13 +2281,22 @@
                 card.append(main, actions); list.append(card);
             });
             list.hidden = false;
+            return true;
         }
         async function loadWatchmodeSources(tmdbId, type) {
             const status = document.getElementById('where-to-watch-status'); const list = document.getElementById('watchmode-list');
             if (!status || !list) return;
             list.hidden = true; const region = getWatchRegion(); status.textContent = `Checking official availability in ${region}…`;
-            try { const data = await watchmodeFetch(tmdbId, type, region); renderWatchmodeSources(data.sources, region); }
-            catch (error) { status.textContent = error.message === 'Watchmode is not configured' ? 'Where-to-watch links are not configured yet.' : 'Official availability is temporarily unavailable.'; }
+            try {
+                const data = await watchmodeFetch(tmdbId, type, region);
+                if (renderWatchmodeSources(data.sources, region)) return;
+                if (await loadTmdbWatchProviderFallback(tmdbId, type, region)) return;
+                status.textContent = `No official streaming links found for ${region}.`;
+            } catch (error) {
+                status.textContent = 'Watchmode unavailable. Checking TMDB availability…';
+                if (await loadTmdbWatchProviderFallback(tmdbId, type, region)) return;
+                status.textContent = error.message === 'Watchmode is not configured' ? 'Where-to-watch links are not configured yet.' : 'Official availability is temporarily unavailable.';
+            }
         }
 
         async function openDetails(idx) {
