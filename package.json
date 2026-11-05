@@ -1,6 +1,9 @@
 {
   "private": true,
+  "scripts": {
+    "build": "node -e \"console.log('Stream HD static build: no compilation required')\""
+  },
   "dependencies": {
-    "mongodb": "^6.9.0"
+    "mongodb": "6.22.0"
   }
 }
