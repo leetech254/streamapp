@@ -178,6 +178,13 @@
         @media (max-width:700px) { #player-empty-state { gap:9px; } .empty-logo { letter-spacing:2px; } .empty-logo-mark { border-radius:14px; } }
         .player-status { position:relative; z-index:15; width:100%; box-sizing:border-box; color:#eee; font:600 .78rem 'Source Code Pro', monospace; text-align:center; pointer-events:auto; background:rgba(0,0,0,.78); border:1px solid rgba(255,215,0,.22); border-radius:10px; padding:8px; margin:10px 0 0; }
         .player-status.playing { display:none; }
+        .provider-restriction-banner { display:none; position:relative; z-index:16; width:100%; box-sizing:border-box; margin:10px 0 0; padding:13px 15px; border:1px solid rgba(255,92,92,.65); border-left:4px solid #ff5c5c; border-radius:10px; background:linear-gradient(120deg,rgba(90,18,18,.9),rgba(30,8,8,.9)); color:#ffecec; font:600 .78rem/1.5 'Source Code Pro',monospace; }
+        .provider-restriction-banner.active { display:block; }
+        .provider-restriction-banner strong { display:block; margin-bottom:4px; color:#fff; font:900 .82rem 'Orbitron',sans-serif; letter-spacing:.4px; }
+        .provider-restriction-banner p { margin:0; }
+        .provider-restriction-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:10px; }
+        .provider-restriction-actions button, .provider-restriction-actions a { display:inline-flex; align-items:center; min-height:30px; padding:5px 9px; border:1px solid rgba(255,215,0,.7); border-radius:7px; background:transparent; color:var(--primary); font:700 .65rem 'Source Code Pro',monospace; text-decoration:none; cursor:pointer; }
+        .provider-restriction-actions button:hover, .provider-restriction-actions a:hover { background:var(--primary); color:#000; }
         .playback-dock { display:none; align-items:center; justify-content:center; gap:7px; flex-wrap:wrap; width:100%; margin:10px 0 0; padding:8px; border:1px solid rgba(0,243,255,.2); border-radius:11px; background:rgba(0,0,0,.72); }
         .playback-dock.active { display:flex; }
         .playback-dock button, .playback-dock select { min-height:34px; border:1px solid rgba(255,215,0,.38); border-radius:8px; background:#0b0b0b; color:#eee; padding:6px 10px; font:700 .68rem 'Source Code Pro',monospace; cursor:pointer; }
@@ -1112,6 +1119,7 @@
                 <iframe id="game-frame" allowfullscreen></iframe>
             </div>
             <div id="player-status" class="player-status" role="status" aria-live="polite">Choose a channel or paste a supported media link.</div>
+            <div id="provider-restriction-banner" class="provider-restriction-banner" role="alert" aria-live="assertive"></div>
             <div id="playback-dock" class="playback-dock" aria-label="Playback controls">
                 <button type="button" onclick="seekPlayback(-10)" aria-label="Seek backward 10 seconds">↶ 10s</button>
                 <button id="playback-toggle" type="button" onclick="togglePlayback()" aria-label="Play or pause">▶ PLAY</button>
@@ -1898,6 +1906,8 @@
         function setPlayerStatus(message, actions = []) {
             const status = document.getElementById('player-status');
             if (!status) return;
+            const restrictionBanner = document.getElementById('provider-restriction-banner');
+            if (restrictionBanner) { restrictionBanner.classList.remove('active'); restrictionBanner.replaceChildren(); }
             const text = String(message || '');
             status.classList.toggle('playing', /^(Playing|Audio playing|Video playing|Live \/ HLS playing|Embedded page playing)/i.test(text) && actions.length === 0);
             status.replaceChildren(document.createTextNode(text));
@@ -1918,6 +1928,18 @@
                 link.rel = 'noopener noreferrer'; link.textContent = String(action.label || 'OPEN LINK');
                 status.appendChild(link);
             }
+        }
+        function showProviderRestrictionBanner(title, trailer = '', error = {}) {
+            const banner = document.getElementById('provider-restriction-banner');
+            if (!banner) return;
+            banner.replaceChildren();
+            const heading = document.createElement('strong'); heading.textContent = 'AUTHORIZED SOURCE RESTRICTION';
+            const message = document.createElement('p'); message.textContent = `The Movie API provider is currently blocking server playback for “${title || 'this title'}”. Stream HD cannot bypass provider access controls. This is not a problem with your device or internet connection.`;
+            const actions = document.createElement('div'); actions.className = 'provider-restriction-actions';
+            if (trailer) { const link = document.createElement('a'); link.href = trailer; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'WATCH OFFICIAL TRAILER'; actions.appendChild(link); }
+            const about = document.createElement('a'); about.href = '/about#trust-title'; about.textContent = 'WHY THIS HAPPENS'; actions.appendChild(about);
+            const dismiss = document.createElement('button'); dismiss.type = 'button'; dismiss.textContent = 'DISMISS'; dismiss.addEventListener('click', () => { banner.classList.remove('active'); banner.replaceChildren(); }); actions.appendChild(dismiss);
+            banner.append(heading, message, actions); banner.classList.add('active');
         }
         function playOfficialLive(videoId) {
             const id = String(videoId || '').trim();
@@ -2877,6 +2899,7 @@
                     const retryAction = error.retryable === false ? [] : [{ label: '↻ RETRY FULL PLAYBACK', onClick: () => playMovieApiItem(id, title, type, season, episode, item) }];
                     const reason = error.code === 'UPSTREAM_ACCESS_BLOCKED' ? 'The authorized provider blocked server playback.' : 'The authorized provider is temporarily unavailable.';
                     setPlayerStatus(`${reason} Playing the official trailer instead.`, retryAction);
+                    if (error.code === 'UPSTREAM_ACCESS_BLOCKED') showProviderRestrictionBanner(title, trailer, error);
                     showToast(error.code === 'UPSTREAM_ACCESS_BLOCKED' ? 'PROVIDER BLOCKED FULL PLAYBACK — OFFICIAL TRAILER PLAYING' : 'FULL PLAYBACK UNAVAILABLE — OFFICIAL TRAILER PLAYING');
                     return;
                 }
@@ -2886,6 +2909,7 @@
                     : `Authorized playback could not start for ${title}.`;
                 const actions = error.retryable === false ? [] : [{ label: '↻ RETRY', onClick: () => playMovieApiItem(id, title, type, season, episode, item) }];
                 setPlayerStatus(message, actions);
+                if (blocked) showProviderRestrictionBanner(title, trailer, error);
                 showToast(`${blocked ? 'PROVIDER BLOCKED PLAYBACK' : 'PLAYBACK UNAVAILABLE'} — ${providerMessage.slice(0, 80)}`);
             }
         }
