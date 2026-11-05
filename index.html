@@ -765,6 +765,19 @@
             max-height: 180px; 
             overflow-y: auto;
         }
+        .where-to-watch { margin: 4px 0 18px; padding: 12px; border: 1px solid rgba(0,243,255,.2); border-radius: 12px; background: rgba(0,0,0,.35); }
+        .where-to-watch h3 { margin: 0 0 8px; color: var(--primary); font: 700 .78rem 'Orbitron',sans-serif; letter-spacing: .7px; }
+        .where-to-watch-status { color: #999; font: 600 .68rem 'Source Code Pro',monospace; }
+        .watchmode-list { display: grid; gap: 7px; max-height: 190px; overflow-y: auto; }
+        .watchmode-card { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid rgba(255,255,255,.1); border-radius: 9px; background: rgba(255,255,255,.03); }
+        .watchmode-card-main { min-width: 0; flex: 1; }
+        .watchmode-card-name { color: #eee; font: 700 .72rem 'Source Code Pro',monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .watchmode-card-meta { margin-top: 3px; color: #999; font: 600 .62rem 'Source Code Pro',monospace; }
+        .watchmode-card-actions { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+        .watchmode-card-actions a { display: inline-flex; align-items: center; min-height: 28px; padding: 4px 7px; border: 1px solid rgba(255,215,0,.45); border-radius: 7px; color: var(--primary); font: 700 .6rem 'Source Code Pro',monospace; text-decoration: none; }
+        .watchmode-card-actions a:hover, .watchmode-card-actions a:focus-visible { color: #000; background: var(--primary); outline: 2px solid #fff; outline-offset: 1px; }
+        .watchmode-attribution { margin-top: 8px; color: #777; font: 600 .58rem 'Source Code Pro',monospace; }
+        @media (max-width:700px) { .where-to-watch { margin-bottom: 12px; padding: 9px; } .watchmode-card { align-items: flex-start; flex-direction: column; } .watchmode-card-actions { justify-content: flex-start; } }
 
         .admin-panel { 
             width: 90%; 
@@ -945,6 +958,12 @@
                 <div id="det-meta" class="details-meta">2026 | ⭐ 8.5/10</div>
                 <div id="det-desc" class="details-desc">Loading description...</div>
                 <div id="det-cast" class="details-meta" style="margin-top:10px;color:#aaa;">Cast: Loading...</div>
+                <section id="where-to-watch" class="where-to-watch" aria-labelledby="where-to-watch-title">
+                    <h3 id="where-to-watch-title">WHERE TO WATCH</h3>
+                    <div id="where-to-watch-status" class="where-to-watch-status">Checking official availability…</div>
+                    <div id="watchmode-list" class="watchmode-list" hidden></div>
+                    <div class="watchmode-attribution">Availability and links powered by Watchmode. Stream HD does not host or proxy these services.</div>
+                </section>
                 <div id="tv-episode-picker" hidden style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0;">
                     <label style="color:#aaa;font-size:.78rem;">Season <select id="tv-season-select" class="paste-input"></select></label>
                     <label style="color:#aaa;font-size:.78rem;">Episode <select id="tv-episode-select" class="paste-input"></select></label>
@@ -1438,6 +1457,14 @@
             const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
             const body = await response.json().catch(() => ({}));
             if (!response.ok || body.success === false) throw new Error(apiErrorText(body.error || body, `MOVIE_API_HTTP_${response.status}`));
+            return body;
+        }
+        async function watchmodeFetch(tmdbId, type, regions = getWatchRegion()) {
+            const url = new URL('/api/watchmode', window.location.origin);
+            url.search = new URLSearchParams({ tmdbId: String(tmdbId || ''), type: type === 'tv' ? 'tv' : 'movie', regions: `${regions},US` }).toString();
+            const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(apiErrorText(body.error || body, `WATCHMODE_HTTP_${response.status}`));
             return body;
         }
         async function youtubeApiFetch(query, params = {}) {
@@ -2184,6 +2211,51 @@
             return /^[A-Za-z]{2}$/.test(localeRegion) ? localeRegion.toUpperCase() : 'US';
         }
 
+        function validWatchmodeLink(value) {
+            const text = String(value || '').trim();
+            if (!text || /available for paid plans|^null$/i.test(text)) return '';
+            try { const url = new URL(text); return /^https?:$/.test(url.protocol) ? url.href : ''; } catch { return ''; }
+        }
+        function watchmodeLink(source) {
+            const android = /Android/i.test(navigator.userAgent); const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+            if (android && validWatchmodeLink(source.android_url)) return { label: 'OPEN APP', url: validWatchmodeLink(source.android_url) };
+            if (ios && validWatchmodeLink(source.ios_url)) return { label: 'OPEN APP', url: validWatchmodeLink(source.ios_url) };
+            const web = validWatchmodeLink(source.web_url);
+            return web ? { label: 'WATCH ON WEB', url: web } : null;
+        }
+        function watchmodeTypeLabel(type) {
+            return ({ sub: 'SUBSCRIPTION', rent: 'RENT', buy: 'BUY', free: 'FREE', tve: 'TV' }[String(type || '').toLowerCase()] || String(type || 'WATCH').toUpperCase());
+        }
+        function renderWatchmodeSources(sources, region) {
+            const status = document.getElementById('where-to-watch-status'); const list = document.getElementById('watchmode-list');
+            if (!status || !list) return;
+            list.replaceChildren(); const seen = new Set(); const rank = { free: 0, sub: 1, tve: 2, rent: 3, buy: 4 };
+            const ordered = (Array.isArray(sources) ? sources : []).filter(source => {
+                if (!source) return false; const key = `${source.name || source.source_id}|${source.type}|${source.region}|${source.web_url || ''}`;
+                if (seen.has(key) || !watchmodeLink(source)) return false; seen.add(key); return true;
+            }).sort((a, b) => (rank[a.type] ?? 9) - (rank[b.type] ?? 9));
+            if (!ordered.length) { status.textContent = `No official streaming links found for ${region}.`; list.hidden = true; return; }
+            status.textContent = `${ordered.length} official option${ordered.length === 1 ? '' : 's'} in ${region}`;
+            ordered.slice(0, 12).forEach(source => {
+                const link = watchmodeLink(source); const card = document.createElement('article'); card.className = 'watchmode-card';
+                const main = document.createElement('div'); main.className = 'watchmode-card-main';
+                const name = document.createElement('div'); name.className = 'watchmode-card-name'; name.textContent = source.name || 'Streaming provider';
+                const meta = document.createElement('div'); meta.className = 'watchmode-card-meta'; meta.textContent = `${watchmodeTypeLabel(source.type)} · ${String(source.region || region).toUpperCase()}${source.price ? ` · ${source.price}` : ''}`;
+                main.append(name, meta);
+                const actions = document.createElement('div'); actions.className = 'watchmode-card-actions';
+                const anchor = document.createElement('a'); anchor.href = link.url; anchor.target = '_blank'; anchor.rel = 'noopener noreferrer'; anchor.textContent = link.label; anchor.setAttribute('aria-label', `${link.label}: ${source.name || 'provider'}`); actions.append(anchor);
+                card.append(main, actions); list.append(card);
+            });
+            list.hidden = false;
+        }
+        async function loadWatchmodeSources(tmdbId, type) {
+            const status = document.getElementById('where-to-watch-status'); const list = document.getElementById('watchmode-list');
+            if (!status || !list) return;
+            list.hidden = true; const region = getWatchRegion(); status.textContent = `Checking official availability in ${region}…`;
+            try { const data = await watchmodeFetch(tmdbId, type, region); renderWatchmodeSources(data.sources, region); }
+            catch (error) { status.textContent = error.message === 'Watchmode is not configured' ? 'Where-to-watch links are not configured yet.' : 'Official availability is temporarily unavailable.'; }
+        }
+
         async function openDetails(idx) {
             const ch = CHANNELS[idx];
             if(ch.reqVip && !isVIP) return showToast('VIP ACCESS REQUIRED');
@@ -2196,6 +2268,9 @@
             document.getElementById('det-meta').innerText = "Loading data...";
             document.getElementById('det-desc').innerText = "Connecting to global database...";
             document.getElementById('det-cast').innerText = 'Cast: Loading...';
+            document.getElementById('where-to-watch-status').innerText = 'Checking official availability…';
+            document.getElementById('watchmode-list').replaceChildren();
+            document.getElementById('watchmode-list').hidden = true;
             document.getElementById('tv-episode-picker').hidden = ch.cType !== 'tv';
             document.getElementById('tv-episode-picker').style.display = ch.cType === 'tv' ? 'flex' : 'none';
             document.querySelector('.details-modal').style.backgroundImage = '';
@@ -2219,6 +2294,7 @@
                     document.getElementById('det-cast').innerText = cast.length ? `Cast: ${cast.join(', ')}` : 'Cast: Not available';
                     if (data.backdrop_path) document.querySelector('.details-modal').style.backgroundImage = `linear-gradient(rgba(7,7,7,.78),rgba(7,7,7,.96)),url(https://image.tmdb.org/t/p/w1280${data.backdrop_path})`;
                     activePlayerContext = { tmdb_id: ch.tmdbId, type: ch.cType, title: ch.name };
+                    loadWatchmodeSources(ch.tmdbId, ch.cType);
                     if (ch.cType === 'tv') setupTvPicker(ch, data.seasons || []);
                 }
             } catch (e) {
