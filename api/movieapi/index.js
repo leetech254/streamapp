@@ -43,7 +43,26 @@ async function requestMedia(url, range) {
     const headers = { Accept: 'video/mp4,video/*;q=0.9,*/*;q=0.1', 'User-Agent': 'StreamHD/1.0' };
     if (range) headers.Range = range;
     return await fetch(url, { signal: controller.signal, headers });
-  } finally { clearTimeout(timeout); }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function mediaFailure(upstream) {
+  const status = Number(upstream.status) || 502;
+  let text = '';
+  try { text = (await upstream.text()).slice(0, 1200); } catch {}
+  const blocked = status === 401 || status === 403 || /access denied|automated requests|bot|forbidden|blocked/i.test(text);
+  return {
+    status: blocked ? 502 : (status >= 500 ? 502 : status),
+    code: blocked ? 'UPSTREAM_ACCESS_BLOCKED' : 'UPSTREAM_MEDIA_ERROR',
+    message: blocked
+      ? 'The authorized Movie API provider blocked this server playback request.'
+      : `Movie API media request failed with HTTP ${status}`,
+    upstreamStatus: status,
+    retryable: !blocked && status >= 500,
+    officialFallbackAvailable: true
+  };
 }
 
 function copyMediaHeaders(upstream, res) {
@@ -117,7 +136,14 @@ module.exports = async function movieApiHandler(req, res) {
       if (/^(360|480|720|1080)$/.test(resolution)) url.searchParams.set('resolution', resolution);
       if (lang && lang.length <= 30) url.searchParams.set('lang', lang);
       const upstream = await requestMedia(url, req.headers.range || '');
-      if (!upstream.ok && upstream.status !== 206) return sendError(res, upstream.status >= 500 ? 502 : upstream.status, `Movie API media request failed with HTTP ${upstream.status}`, upstream.status === 403 ? 'UPSTREAM_FORBIDDEN' : 'UPSTREAM_MEDIA_ERROR');
+      if (!upstream.ok && upstream.status !== 206) {
+        const failure = await mediaFailure(upstream);
+        return sendError(res, failure.status, failure.message, failure.code, {
+          upstreamStatus: failure.upstreamStatus,
+          retryable: failure.retryable,
+          officialFallbackAvailable: failure.officialFallbackAvailable
+        });
+      }
       return pipeMedia(upstream, res);
     }
 

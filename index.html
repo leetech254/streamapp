@@ -1459,7 +1459,14 @@
             url.search = new URLSearchParams({ action, ...params }).toString();
             const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
             const body = await response.json().catch(() => ({}));
-            if (!response.ok || body.success === false) throw new Error(apiErrorText(body.error || body, `MOVIE_API_HTTP_${response.status}`));
+            if (!response.ok || body.success === false) {
+                const error = new Error(apiErrorText(body.error || body, `MOVIE_API_HTTP_${response.status}`));
+                error.code = String(body.code || `MOVIE_API_HTTP_${response.status}`);
+                error.retryable = body.retryable !== false;
+                error.officialFallbackAvailable = body.officialFallbackAvailable === true;
+                error.upstreamStatus = body.upstreamStatus || null;
+                throw error;
+            }
             return body;
         }
         async function watchmodeFetch(tmdbId, type, regions = getWatchRegion()) {
@@ -2843,12 +2850,19 @@
                 const trailer = movieApiTrailer(item);
                 if (trailer) {
                     playDirectMedia(trailer, `${title} — official trailer`, 'video');
-                    setPlayerStatus(`Full playback is temporarily unavailable for ${title}. Playing the official trailer instead.`, [{ label: '↻ RETRY FULL PLAYBACK', onClick: () => playMovieApiItem(id, title, type, season, episode, item) }]);
-                    showToast('FULL PLAYBACK UNAVAILABLE — OFFICIAL TRAILER PLAYING');
+                    const retryAction = error.retryable === false ? [] : [{ label: '↻ RETRY FULL PLAYBACK', onClick: () => playMovieApiItem(id, title, type, season, episode, item) }];
+                    const reason = error.code === 'UPSTREAM_ACCESS_BLOCKED' ? 'The authorized provider blocked server playback.' : 'The authorized provider is temporarily unavailable.';
+                    setPlayerStatus(`${reason} Playing the official trailer instead.`, retryAction);
+                    showToast(error.code === 'UPSTREAM_ACCESS_BLOCKED' ? 'PROVIDER BLOCKED FULL PLAYBACK — OFFICIAL TRAILER PLAYING' : 'FULL PLAYBACK UNAVAILABLE — OFFICIAL TRAILER PLAYING');
                     return;
                 }
-                setPlayerStatus(`Authorized playback could not start for ${title}.`, [{ label: '↻ RETRY', onClick: () => playMovieApiItem(id, title, type, season, episode, item) }]);
-                showToast(`PLAYBACK UNAVAILABLE — ${providerMessage.slice(0, 80)}`);
+                const blocked = error.code === 'UPSTREAM_ACCESS_BLOCKED';
+                const message = blocked
+                    ? `Full authorized playback for ${title} is blocked by the Movie API provider. Stream HD cannot bypass that restriction.`
+                    : `Authorized playback could not start for ${title}.`;
+                const actions = error.retryable === false ? [] : [{ label: '↻ RETRY', onClick: () => playMovieApiItem(id, title, type, season, episode, item) }];
+                setPlayerStatus(message, actions);
+                showToast(`${blocked ? 'PROVIDER BLOCKED PLAYBACK' : 'PLAYBACK UNAVAILABLE'} — ${providerMessage.slice(0, 80)}`);
             }
         }
 
