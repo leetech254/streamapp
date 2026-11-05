@@ -1812,7 +1812,7 @@
         function togglePlayback() {
             const media = getActiveNativeMedia();
             if (!media) return showToast('SELECT AUDIO OR VIDEO FIRST');
-            const action = media.paused ? media.play() : Promise.resolve(media.pause());
+            const action = media.paused ? attemptMediaPlay(media) : Promise.resolve(media.pause());
             Promise.resolve(action).then(updatePlaybackDock).catch(() => showToast('PRESS THE PLAYER PLAY CONTROL'));
         }
         function setPlaybackRate(value) {
@@ -1941,6 +1941,27 @@
             const dismiss = document.createElement('button'); dismiss.type = 'button'; dismiss.textContent = 'DISMISS'; dismiss.addEventListener('click', () => { banner.classList.remove('active'); banner.replaceChildren(); }); actions.appendChild(dismiss);
             banner.append(heading, message, actions); banner.classList.add('active');
         }
+        function attemptMediaPlay(media) {
+            if (!media) return Promise.reject(new Error('MEDIA_ELEMENT_MISSING'));
+            return media.play().then(() => { setPlayerStatus(media.tagName === 'AUDIO' ? 'Audio playing' : 'Video playing'); updatePlaybackDock(); return true; });
+        }
+        function showNativePlayAction(video, url, kind, reason = 'Video is ready. Tap Play to start playback.') {
+            const retry = () => attemptMediaPlay(video).catch(error => {
+                const message = error?.name === 'NotAllowedError' ? 'Playback was blocked by the browser. Tap the video player Play control.' : 'The video source could not start on this device.';
+                setPlayerStatus(message, [{ label: '↻ RETRY VIDEO', onClick: retry }]);
+                throw error;
+            });
+            setPlayerStatus(reason, [{ label: '▶ PLAY VIDEO', onClick: retry }]);
+        }
+        function playNativeVideoWhenReady(video, url, kind) {
+            if (video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return attemptMediaPlay(video).catch(error => { if (error?.name === 'NotAllowedError') showNativePlayAction(video, url, kind); else setPlayerStatus('Video could not start. Check the media format or source access.', [{ label: '↻ RETRY VIDEO', onClick: () => playNativeVideo(url, kind) }]); });
+            let settled = false;
+            const cleanup = () => { video.removeEventListener('canplay', onReady); video.removeEventListener('error', onError); clearTimeout(timer); };
+            const onReady = () => { if (settled) return; settled = true; cleanup(); attemptMediaPlay(video).catch(error => { if (error?.name === 'NotAllowedError') showNativePlayAction(video, url, kind); else setPlayerStatus('Video could not start. Check the media format or source access.', [{ label: '↻ RETRY VIDEO', onClick: () => playNativeVideo(url, kind) }]); }); };
+            const onError = () => { if (settled) return; settled = true; cleanup(); setPlayerStatus('Video source failed to load. Check the URL, authorization, or device codec.', [{ label: '↻ RETRY VIDEO', onClick: () => playNativeVideo(url, kind) }]); };
+            const timer = setTimeout(() => { if (settled) return; settled = true; cleanup(); setPlayerStatus('Video is taking too long to load. Check the source or try again.', [{ label: '↻ RETRY VIDEO', onClick: () => playNativeVideo(url, kind) }]); }, 15000);
+            video.addEventListener('canplay', onReady); video.addEventListener('error', onError);
+        }
         function playOfficialLive(videoId) {
             const id = String(videoId || '').trim();
             if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return showToast('LIVE VIDEO IS NOT AVAILABLE');
@@ -2017,7 +2038,7 @@
             hideAllPlayers();
             triggerLoader();
             video.style.display = 'block';
-            video.controls = true; video.autoplay = true; video.playsInline = true;
+            video.controls = true; video.autoplay = false; video.playsInline = true;
             activePlaybackSource = url;
             activePlaybackKind = kind;
             video.playbackRate = getPlaybackRate();
@@ -2036,9 +2057,7 @@
             } else {
                 video.src = url; video.load();
             }
-            video.play().catch(() => setPlayerStatus('English video is ready. Tap Play to start playback.', [
-                { label: '▶ PLAY VIDEO', onClick: () => video.play().then(() => setPlayerStatus('Video playing')).catch(() => showToast('PRESS THE VIDEO PLAYER PLAY CONTROL')) }
-            ]));
+            playNativeVideoWhenReady(video, url, kind);
             return true;
         }
         function playDirectMedia(rawUrl, title = 'Direct media', forcedKind = '') {
