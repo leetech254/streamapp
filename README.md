@@ -9,6 +9,7 @@ A responsive single-page media player for sources that you own or are authorized
 - Installable PWA with offline shell, subtitle, HLS, and bounded media caching
 - Phone/tablet responsive layout, keyboard/TV remote navigation, and Picture-in-Picture where supported
 - Browser-local library backup/import and channel management
+- Search cards show a readable title, provider/type metadata, release or publication context, ratings when supplied, and a truncated description with safe fallbacks across TMDB, Movie API, YouTube, YOCINEMA, Jamendo, Internet Archive, and Kenya TV results
 
 When a native player is active, keyboard shortcuts include **Space** or **K** for play/pause, **Left/Right Arrow** for 10-second seeking, **Home/End** for the beginning/end, **R** to replay on-demand media, **M** to mute/unmute, **F** for fullscreen, **P** for Picture-in-Picture, **[ / ]** for subtitle timing, and **?** for the shortcut guide. Shortcuts are ignored while focus is inside an input, textarea, or select control and when browser modifier keys are held.
 

@@ -714,13 +714,28 @@
             cursor: pointer; 
             transition: var(--transition); 
             position: relative; 
-            aspect-ratio: 2/3; 
+            display: flex;
+            flex-direction: column;
+            min-height: 100%;
             box-shadow: 0 10px 20px rgba(0,0,0,0.6);
         }
         .api-card:hover { 
             border-color: var(--primary); 
             transform: translateY(-6px); 
             box-shadow: 0 15px 30px rgba(255,215,0,0.25); 
+        }
+        .api-card-media { position:relative; aspect-ratio:2/3; flex:0 0 auto; overflow:hidden; background:#050505; }
+        .api-card-media img { width:100%; height:100%; object-fit:cover; display:block; }
+        .api-card-info { display:flex; flex-direction:column; gap:5px; min-width:0; padding:11px 12px 13px; text-align:left; }
+        .api-card-title { color:#fff; font:800 .82rem/1.25 'Orbitron',sans-serif; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; }
+        .api-card-meta { color:var(--primary); font:700 .66rem/1.3 'Source Code Pro',monospace; letter-spacing:.15px; }
+        .api-card-description { color:#bdbdbd; font:400 .7rem/1.4 'Source Code Pro',monospace; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
+        .api-card:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
+        @media (max-width: 520px) {
+            #api-results { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+            .api-card-info { padding:9px 9px 11px; }
+            .api-card-title { font-size:.72rem; }
+            .api-card-meta, .api-card-description { font-size:.64rem; }
         }
 
         .details-modal { 
@@ -2643,15 +2658,33 @@
                 const box = document.getElementById('api-results');
                 vjs.forEach(vj => {
                     const name = String(vj || '').trim(); if (!name) return;
-                    const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Browse ${name}`);
-                    const image = document.createElement('div'); image.textContent = '♙'; image.style.cssText = 'height:100%;display:grid;place-items:center;font-size:4rem;color:var(--primary);background:linear-gradient(145deg,#151515,#030303)';
-                    const caption = document.createElement('span'); caption.textContent = `VJ ${name} — EXPLORE CATALOG`; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
-                    card.append(image, caption); card.addEventListener('click', () => fetchYocinemaResults('', { vj: name })); box.appendChild(card);
+                    const card = createSearchResultCard({ title: `VJ ${name}`, description: `Explore the YOCINEMA catalog curated by video jockey ${name}.`, meta: 'YOCINEMA VIDEO JOCKEY', ariaLabel: `Browse ${name}`, onClick: () => fetchYocinemaResults('', { vj: name }) });
+                    box.appendChild(card);
                 });
                 document.getElementById('search-status').innerText = vjs.length ? `${vjs.length} VIDEO JOCKEYS` : 'NO VJS FOUND';
             } catch (error) {
                 document.getElementById('search-status').innerText = `VJ DIRECTORY UNAVAILABLE: ${apiErrorText(error.message)}`;
             }
+        }
+
+        function cleanSearchText(value, fallback = '') {
+            const text = String(value == null ? '' : value).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            return text || fallback;
+        }
+        function truncateSearchText(value, limit = 180) {
+            const text = cleanSearchText(value, 'Description unavailable.');
+            return text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text;
+        }
+        function createSearchResultCard({ title, description, meta, image, alt, ariaLabel, onClick }) {
+            const safeTitle = cleanSearchText(title, 'Untitled');
+            const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', ariaLabel || `Open ${safeTitle}`);
+            const media = document.createElement('span'); media.className = 'api-card-media';
+            const poster = document.createElement('img'); poster.src = safeWebUrl(image) || `https://ui-avatars.com/api/?name=${encodeURIComponent(safeTitle)}&background=222&color=ffd700&size=512`; poster.alt = alt || `${safeTitle} artwork`; poster.loading = 'lazy';
+            const info = document.createElement('span'); info.className = 'api-card-info';
+            const heading = document.createElement('strong'); heading.className = 'api-card-title'; heading.textContent = safeTitle;
+            const metadata = document.createElement('span'); metadata.className = 'api-card-meta'; metadata.textContent = cleanSearchText(meta, 'STREAM HD RESULT');
+            const summary = document.createElement('span'); summary.className = 'api-card-description'; summary.textContent = truncateSearchText(description);
+            media.appendChild(poster); info.append(heading, metadata, summary); card.append(media, info); card.addEventListener('click', onClick); return card;
         }
 
         function renderKenyaSearchResults(query, statusMessage = '') {
@@ -2661,10 +2694,8 @@
             CHANNELS.map((item, index) => ({ item, index }))
                 .filter(({ item }) => item && item.category === 'kenya' && (!needle || item.name.toLowerCase().includes(needle)))
                 .forEach(({ item, index }) => {
-                    const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play ${item.name}`);
-                    const image = document.createElement('img'); image.src = safeWebUrl(item.img) || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name)}&background=222&color=ffd700&size=512`; image.alt = `${item.name} logo`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
-                    const caption = document.createElement('span'); caption.textContent = `${item.name} — OFFICIAL CHANNEL`; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
-                    card.append(image, caption); card.addEventListener('click', () => { closeOverlay('search-overlay'); switchSource(index); }); resBox.appendChild(card);
+                    const card = createSearchResultCard({ title: item.name, description: item.description || `Official ${item.name} broadcaster channel. Select to open the authorized live source.`, meta: 'OFFICIAL KENYAN CHANNEL', image: item.img, alt: `${item.name} logo`, ariaLabel: `Play ${item.name}`, onClick: () => { closeOverlay('search-overlay'); switchSource(index); } });
+                    resBox.appendChild(card);
                 });
             document.getElementById('search-status').innerText = statusMessage || (resBox.children.length ? `FOUND ${resBox.children.length} OFFICIAL KENYAN CHANNELS` : 'NO KENYAN CHANNEL MATCH — TRY CITIZEN, NTV, KTN, K24, KBC, TV47 OR MAISHA');
         }
@@ -2678,11 +2709,7 @@
                 const title = String(item.snippet?.title || 'Official live broadcast').replace(/<[^>]+>/g, '');
                 const channelTitle = String(item.snippet?.channelTitle || 'Official Kenyan channel');
                 const img = safeWebUrl(item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url) || `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
-                const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play live ${title}`);
-                const image = document.createElement('img'); image.src = img; image.alt = `${channelTitle} live`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
-                const caption = document.createElement('span'); caption.textContent = `🔴 ${channelTitle} — ${badge}`; caption.title = title; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
-                card.append(image, caption);
-                card.addEventListener('click', () => { closeSearch(); hideAllPlayers(); playOfficialLive(videoId); });
+                const card = createSearchResultCard({ title, description: item.snippet?.description || `Official live broadcast from ${channelTitle}.`, meta: `🔴 ${channelTitle} · ${badge}`, image: img, alt: `${channelTitle} live`, ariaLabel: `Play live ${title}`, onClick: () => { closeSearch(); hideAllPlayers(); playOfficialLive(videoId); } });
                 resBox.appendChild(card);
             });
         }
@@ -2729,14 +2756,10 @@
                     const title = String(item.snippet.title || 'Official TV channel');
                     const description = String(item.snippet.description || 'Official YouTube channel');
                     const img = safeWebUrl(item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url) || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=222&color=ffd700&size=512`;
-                    const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play live ${title}`);
-                    const image = document.createElement('img'); image.src = img; image.alt = `${title} logo`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
-                    const caption = document.createElement('span'); caption.textContent = `${title} — OFFICIAL CHANNEL · CHECKING LIVE`; caption.title = description; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
-                    card.append(image, caption);
-                    card.addEventListener('click', () => {
+                    const card = createSearchResultCard({ title, description, meta: 'OFFICIAL CHANNEL · CHECKING LIVE', image: img, alt: `${title} logo`, ariaLabel: `Play live ${title}`, onClick: () => {
                         const entry = { name: title.toUpperCase(), channelId, type: 'youtube', category: 'kenya', img, watched: false, fav: false, reqVip: false };
                         CHANNELS.unshift(entry); save(); closeSearch(); switchSource(0);
-                    });
+                    } });
                     resBox.appendChild(card);
                 });
                 document.getElementById('search-status').innerText = results.length ? `NO LIVE BROADCAST FOUND — ${results.length} OFFICIAL CHANNELS AVAILABLE TO CHECK` : 'NO ACTIVE LIVE BROADCASTS OR OFFICIAL CHANNELS FOUND';
@@ -2774,10 +2797,9 @@
                 const title = String(item.snippet.title || 'YouTube video').replace(/<[^>]+>/g, '');
                 const channel = String(item.snippet.channelTitle || 'Official YouTube channel');
                 const img = safeWebUrl(item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url) || `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
-                const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play ${title}`);
-                const image = document.createElement('img'); image.src = img; image.alt = `${title} thumbnail`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
-                const caption = document.createElement('span'); caption.textContent = `${title} — ${channel}`; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
-                card.append(image, caption); card.addEventListener('click', () => playYouTubeResult(videoId, title, audioMode)); resBox.appendChild(card);
+                const published = item.snippet.publishedAt ? new Date(item.snippet.publishedAt).getFullYear() : '';
+                const card = createSearchResultCard({ title, description: item.snippet.description, meta: `${audioMode ? 'OFFICIAL AUDIO VIDEO' : 'OFFICIAL VIDEO'} · ${channel}${published ? ` · ${published}` : ''}`, image: img, alt: `${title} thumbnail`, ariaLabel: `Play ${title}`, onClick: () => playYouTubeResult(videoId, title, audioMode) });
+                resBox.appendChild(card);
             });
         }
 
@@ -2833,10 +2855,8 @@
             results.forEach(item => {
                 const id = String(item.identifier || '').trim(); if (!id) return;
                 const title = String(item.title || id).replace(/\s+/g, ' ');
-                const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play ${title}`);
-                const image = document.createElement('img'); image.src = `https://archive.org/services/img/${encodeURIComponent(id)}`; image.alt = `${title} poster`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
-                const caption = document.createElement('span'); caption.textContent = `${title} — PRELINGER ARCHIVE`; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
-                card.append(image, caption); card.addEventListener('click', () => { closeOverlay('search-overlay'); playArchiveItem(id, title); }); resBox.appendChild(card);
+                const card = createSearchResultCard({ title, description: item.description, meta: `PRELINGER ARCHIVE${item.year ? ` · ${item.year}` : ''}`, image: `https://archive.org/services/img/${encodeURIComponent(id)}`, alt: `${title} poster`, ariaLabel: `Play ${title}`, onClick: () => { closeOverlay('search-overlay'); playArchiveItem(id, title); } });
+                resBox.appendChild(card);
             });
         }
 
@@ -2854,17 +2874,7 @@
             const entries = CHANNELS.map((item, index) => ({ item, index }))
                 .filter(({ item }) => item && item.type === 'cinema' && item.cType === type && item.tmdbId);
             entries.forEach(({ item, index }) => {
-                const card = document.createElement('button');
-                card.type = 'button'; card.className = 'api-card';
-                card.setAttribute('aria-label', `Open ${item.name}`);
-                const image = document.createElement('img');
-                image.src = safeWebUrl(item.img) || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name)}&background=222&color=ffd700&size=512`;
-                image.alt = `${item.name} poster`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
-                const caption = document.createElement('span');
-                caption.textContent = `${item.name} (saved catalog)`;
-                caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
-                card.append(image, caption);
-                card.addEventListener('click', () => openDetails(index));
+                const card = createSearchResultCard({ title: item.name, description: item.overview || item.description || 'Saved catalog title. Open details for full metadata and playback options.', meta: `SAVED CATALOG · ${type.toUpperCase()}`, image: item.img, alt: `${item.name} poster`, ariaLabel: `Open ${item.name}`, onClick: () => openDetails(index) });
                 resBox.appendChild(card);
             });
             if (!resBox.children.length) resBox.innerHTML = '<p style="padding:30px;color:#777">TMDB is unavailable and no saved catalog titles are available.</p>';
@@ -2905,11 +2915,9 @@
                 const year = String(item.year || item.release_year || item.releaseDate || '').slice(0, 4);
                 const cover = item.cover && typeof item.cover === 'object' ? item.cover.url : item.cover;
                 const img = safeWebUrl(cover || item.poster || item.poster_min || item.poster_org || item.banner_mini) || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=222&color=ffd700&size=512`;
-                const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play ${title}`);
-                const image = document.createElement('img'); image.src = img; image.alt = `${title} poster`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
-                const caption = document.createElement('span'); caption.textContent = `${title}${year ? ` (${year})` : ''} — AUTHORIZED API`; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
-                card.append(image, caption);
-                card.addEventListener('click', async () => {
+                const description = item.description || item.overview || item.summary || item.plot || item.synopsis || item.introduction;
+                const rating = item.rating || item.score || item.imdbRating || item.vote_average;
+                const card = createSearchResultCard({ title, description, meta: `AUTHORIZED API · ${type === 'tv' ? 'SERIES' : 'MOVIE'}${year ? ` · ${year}` : ''}${rating ? ` · ★ ${rating}` : ''}`, image: img, alt: `${title} poster`, ariaLabel: `Play ${title}`, onClick: async () => {
                     let season = '', episode = '';
                     if (type === 'tv') {
                         season = window.prompt('Season number', '1');
@@ -2918,7 +2926,7 @@
                     }
                     closeSearch();
                     await playMovieApiItem(id, title, type, season, episode, item);
-                });
+                } });
                 resBox.appendChild(card);
             });
             if (!resBox.children.length) resBox.innerHTML = '<p style="padding:30px;color:#777">No titles were returned by the authorized Movie API.</p>';
@@ -2974,10 +2982,11 @@
                 const id = String(item && item._id || '').trim(); if (!id) return;
                 const title = String(item.title || 'Untitled');
                 const img = safeWebUrl(item.cover) || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=222&color=ffd700&size=512`;
-                const card = document.createElement('button'); card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play ${title}`);
-                const image = document.createElement('img'); image.src = img; image.alt = `${title} poster`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
-                const caption = document.createElement('span'); caption.textContent = `${title} — YOCINEMA ${String(item.type || 'movie').toUpperCase()}`; caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
-                card.append(image, caption); card.addEventListener('click', () => { closeSearch(); playYocinemaItem(id, title); }); resBox.appendChild(card);
+                const year = String(item.year || item.releaseYear || item.release_date || '').slice(0, 4);
+                const rating = item.rating || item.score || item.imdbRating;
+                const description = item.description || item.overview || item.summary || item.plot || item.synopsis;
+                const card = createSearchResultCard({ title, description, meta: `YOCINEMA ${String(item.type || 'movie').toUpperCase()}${year ? ` · ${year}` : ''}${rating ? ` · ★ ${rating}` : ''}`, image: img, alt: `${title} poster`, ariaLabel: `Play ${title}`, onClick: () => { closeSearch(); playYocinemaItem(id, title); } });
+                resBox.appendChild(card);
             });
         }
 
@@ -3086,16 +3095,12 @@
                 const title = String(item.name || 'Untitled track');
                 const artist = String(item.artist_name || 'Unknown artist');
                 const img = safeWebUrl(item.image || item.album_image) || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=222&color=ffd700&size=512`;
-                const card = document.createElement('button');
-                card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Play ${title} by ${artist}`);
-                const image = document.createElement('img'); image.src = img; image.alt = `${title} artwork`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
-                const caption = document.createElement('span'); caption.textContent = `${title} — ${artist}`;
-                caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
-                card.append(image, caption);
-                card.addEventListener('click', () => {
+                const duration = Number(item.duration);
+                const durationLabel = Number.isFinite(duration) && duration > 0 ? `${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')}` : '';
+                const card = createSearchResultCard({ title, description: item.description || item.album_name || 'Licensed Jamendo track available for direct playback.', meta: `JAMENDO · ${artist}${item.album_name ? ` · ${item.album_name}` : ''}${durationLabel ? ` · ${durationLabel}` : ''}`, image: img, alt: `${title} artwork`, ariaLabel: `Play ${title} by ${artist}`, onClick: () => {
                     const entry = { name: title.toUpperCase(), artist, type: 'audio', category: 'music', url: safeWebUrl(item.audio), downloadUrl: safeWebUrl(item.audiodownload) || safeWebUrl(item.audio), img, shareurl: safeWebUrl(item.shareurl), license: item.license_ccurl || '', watched: false, fav: false, reqVip: false };
                     CHANNELS.unshift(entry); save(); closeSearch(); switchSource(0);
-                });
+                } });
                 resBox.appendChild(card);
             });
             if (!resBox.children.length) resBox.innerHTML = '<p style="padding:30px;color:#777">No playable Jamendo tracks found.</p>';
@@ -3106,17 +3111,13 @@
             results.forEach(item => {
                 const title = String((type === 'tv' ? item.name : item.title) || 'Untitled');
                 const year = String((type === 'tv' ? item.first_air_date : item.release_date) || 'N/A');
+                const mediaType = type === 'tv' ? 'SERIES' : type === 'movie' ? 'MOVIE' : 'PERSON';
+                const rating = Number.isFinite(Number(item.vote_average)) && Number(item.vote_average) > 0 ? `★ ${Number(item.vote_average).toFixed(1)}` : '';
                 const img = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=222&color=fff&size=512`;
-                const card = document.createElement('button');
-                card.type = 'button'; card.className = 'api-card'; card.setAttribute('aria-label', `Add ${title}, ${year.slice(0,4)}`);
-                const image = document.createElement('img'); image.src = img; image.alt = `${title} poster`; image.loading = 'lazy'; image.style.cssText = 'width:100%;height:100%;object-fit:cover';
-                const caption = document.createElement('span'); caption.textContent = `${title} (${year.slice(0,4)})`;
-                caption.style.cssText = 'position:absolute;bottom:0;width:100%;background:rgba(0,0,0,.9);padding:15px 10px;font-size:.8rem;font-weight:bold;text-align:left;color:#fff';
-                card.append(image, caption);
-                card.addEventListener('click', () => {
+                const card = createSearchResultCard({ title, description: item.overview || item.biography || 'Open this title for full TMDB details, cast, trailer, and authorized watch options.', meta: `${mediaType}${year !== 'N/A' ? ` · ${year.slice(0, 4)}` : ''}${item.original_language ? ` · ${String(item.original_language).toUpperCase()}` : ''}${rating ? ` · ${rating}` : ''}`, image: img, alt: `${title} poster`, ariaLabel: `Add ${title}, ${year.slice(0,4)}`, onClick: () => {
                     const entry = { name: title.toUpperCase(), type: 'cinema', cType: type, tmdbId: item.id, category: type, img, watched: false, fav: false, reqVip: false };
                     CHANNELS.unshift(entry); save(); closeSearch(); activeDetailsEntry = 0; openDetails(0);
-                });
+                } });
                 resBox.appendChild(card);
             });
         }
