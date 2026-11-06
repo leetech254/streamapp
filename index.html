@@ -3046,7 +3046,14 @@
                         try { event.target.playVideo(); } catch {}
                     },
                     onStateChange: handleYouTubePlayerState,
-                    onError: () => setPlayerStatus('YouTube could not play this video.', [{ label: '↻ RETRY', onClick: () => playYouTubeResult(id, title, audioMode) }])
+                    onError: () => {
+                        if (suggestionQueue.length) {
+                            showToast('VIDEO UNAVAILABLE — SKIPPING TO NEXT');
+                            playNextSuggestion(true);
+                            return;
+                        }
+                        setPlayerStatus('YouTube could not play this video.', [{ label: '↻ RETRY', onClick: () => playYouTubeResult(id, title, audioMode) }]);
+                    }
                 };
                 const existingIframe = youtubePlayer?.getIframe?.();
                 const existingPlayerUsable = Boolean(existingIframe && /youtube(?:-nocookie)?\.com\/embed\//i.test(existingIframe.src || ''));
