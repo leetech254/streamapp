@@ -3036,7 +3036,15 @@
                     monitorEmbeddedFrame(frame, audioMode ? 'official YouTube audio video' : 'official YouTube video', () => playYouTubeResult(id, title, audioMode));
                 };
                 const events = {
-                    onReady: event => { playerReady = true; event.target.playVideo(); },
+                    onReady: event => {
+                        playerReady = true;
+                        const play = () => {
+                            try { event.target.playVideo(); } catch {}
+                            setPlayerStatus(activeYouTubeAudioMode ? 'Playing official YouTube audio video' : 'Playing official YouTube video');
+                        };
+                        setPlayerStatus(`${audioMode ? 'Official YouTube audio' : 'Official YouTube video'} is ready. Tap Play to start.`, [{ label: '▶ PLAY VIDEO', onClick: play }]);
+                        try { event.target.playVideo(); } catch {}
+                    },
                     onStateChange: handleYouTubePlayerState,
                     onError: () => setPlayerStatus('YouTube could not play this video.', [{ label: '↻ RETRY', onClick: () => playYouTubeResult(id, title, audioMode) }])
                 };
