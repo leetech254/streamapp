@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Stream HD Media Player",
   "short_name": "Stream HD",
-  "description": "A responsive player for authorized live streams, video, audio, and catalog metadata.",
+  "description": "A responsive player for live streams, video, audio, subtitles, and catalog metadata.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
