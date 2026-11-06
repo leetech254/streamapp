@@ -3053,6 +3053,8 @@
                 if (existingPlayerUsable && typeof youtubePlayer.loadVideoById === 'function') {
                     playerReady = true;
                     youtubePlayer.loadVideoById({ videoId: id, startSeconds: 0 });
+                    try { youtubePlayer.playVideo(); } catch {}
+                    setPlayerStatus(`Playing ${audioMode ? 'official YouTube audio' : 'official YouTube video'}`);
                 } else {
                     try { youtubePlayer?.destroy?.(); } catch {}
                     youtubePlayer = null;
