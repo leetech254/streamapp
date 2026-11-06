@@ -694,6 +694,18 @@
         .channel-popup-actions { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
         .channel-popup-actions .btn { min-width:145px; }
         .channel-popup-dismiss { margin-top:15px; border:0; background:none; color:#777; cursor:pointer; font:600 .72rem 'Source Code Pro',monospace; }
+        .share-sheet { width:min(92%,520px); margin:auto; padding:24px; border:1px solid rgba(255,215,0,.35); border-radius:20px; background:linear-gradient(145deg,#151515,#050505); box-shadow:0 25px 90px rgba(0,0,0,.82),0 0 45px rgba(255,215,0,.1); }
+        .share-sheet h2 { margin:0 0 6px; color:var(--primary); font:900 1.25rem 'Orbitron',sans-serif; letter-spacing:1px; }
+        .share-sheet p { margin:0 0 16px; color:#aaa; line-height:1.45; }
+        .share-sheet-url { display:block; overflow:hidden; margin-bottom:16px; padding:10px 12px; border:1px solid rgba(255,255,255,.12); border-radius:9px; color:#ddd; background:#090909; font:600 .68rem 'Source Code Pro',monospace; text-overflow:ellipsis; white-space:nowrap; }
+        .share-sheet-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+        .share-sheet-action { display:flex; align-items:center; justify-content:center; min-height:44px; padding:10px; border:1px solid rgba(255,255,255,.16); border-radius:9px; color:#fff; background:#111; cursor:pointer; font:800 .72rem 'Source Code Pro',monospace; text-decoration:none; }
+        .share-sheet-action:hover, .share-sheet-action:focus-visible { border-color:var(--primary); color:#000; background:var(--primary); outline:2px solid #fff; outline-offset:1px; }
+        .share-sheet-action.whatsapp { border-color:rgba(37,211,102,.6); color:#7ff0a4; }
+        .share-sheet-action.telegram { border-color:rgba(40,169,232,.65); color:#8ddaff; }
+        .share-sheet-action.sms { border-color:rgba(0,243,255,.5); color:#8fefff; }
+        .share-sheet-close { width:100%; margin-top:12px; border:0; background:transparent; color:#777; cursor:pointer; font:700 .7rem 'Source Code Pro',monospace; }
+        .share-sheet-close:hover, .share-sheet-close:focus-visible { color:#fff; }
 
         .search-box { 
             width: 90%; 
@@ -1001,6 +1013,23 @@
                 <button class="btn alt" type="button" onclick="closeWhatsAppChannelPopup()">NOT NOW</button>
             </div>
             <button class="channel-popup-dismiss" type="button" onclick="dismissWhatsAppChannelPopup()">DON'T SHOW AGAIN</button>
+        </div>
+    </div>
+
+    <div id="share-overlay" class="overlay-screen" role="dialog" aria-modal="true" aria-labelledby="share-sheet-title" onclick="if(event.target===this) closeShareSheet()">
+        <div class="share-sheet" onclick="event.stopPropagation()">
+            <h2 id="share-sheet-title">SHARE STREAM HD</h2>
+            <p id="share-sheet-description">Choose a messaging app or copy the link.</p>
+            <span id="share-sheet-url" class="share-sheet-url" aria-label="Link to share"></span>
+            <div class="share-sheet-grid">
+                <a id="share-whatsapp" class="share-sheet-action whatsapp" target="_blank" rel="noopener noreferrer">☏ WHATSAPP</a>
+                <a id="share-telegram" class="share-sheet-action telegram" target="_blank" rel="noopener noreferrer">➤ TELEGRAM</a>
+                <a id="share-sms" class="share-sheet-action sms">▣ SMS / MESSAGES</a>
+                <a id="share-email" class="share-sheet-action">✉ EMAIL</a>
+                <button id="share-copy" class="share-sheet-action" type="button">⧉ COPY LINK</button>
+                <button id="share-native" class="share-sheet-action" type="button">↗ TRY DEVICE SHARE</button>
+            </div>
+            <button class="share-sheet-close" type="button" onclick="closeShareSheet()">CLOSE</button>
         </div>
     </div>
 
@@ -1920,10 +1949,44 @@
             if (!target) return;
             try { if (document.fullscreenElement) await document.exitFullscreen(); else await target.requestFullscreen(); } catch { showToast('FULLSCREEN IS NOT AVAILABLE'); }
         }
+        function sharePayload({ title = 'Stream HD', text = '', url = location.href } = {}) {
+            const safeUrl = safeWebUrl(url) || location.href;
+            return { title: String(title || 'Stream HD').slice(0, 120), text: String(text || `Watch ${title || 'Stream HD'} on Stream HD`).slice(0, 500), url: safeUrl };
+        }
+        async function copyShareLink(url) {
+            try {
+                if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url);
+                else { const input = document.createElement('textarea'); input.value = url; input.style.position = 'fixed'; input.style.opacity = '0'; document.body.appendChild(input); input.select(); document.execCommand('copy'); input.remove(); }
+                showToast('SHARE LINK COPIED'); return true;
+            } catch { showToast('COPY FAILED — SELECT THE LINK MANUALLY'); return false; }
+        }
+        function closeShareSheet() { const overlay = document.getElementById('share-overlay'); if (overlay) overlay.style.display = 'none'; }
+        function openShareFallback(data) {
+            const payload = sharePayload(data);
+            const encodedUrl = encodeURIComponent(payload.url); const encodedText = encodeURIComponent(`${payload.text} ${payload.url}`); const encodedTitle = encodeURIComponent(payload.title);
+            const overlay = document.getElementById('share-overlay'); if (!overlay) return copyShareLink(payload.url);
+            document.getElementById('share-sheet-description').textContent = 'Choose a messaging app or copy the link.';
+            document.getElementById('share-sheet-url').textContent = payload.url;
+            document.getElementById('share-whatsapp').href = `https://wa.me/?text=${encodedText}`;
+            document.getElementById('share-telegram').href = `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(payload.text)}`;
+            document.getElementById('share-sms').href = `sms:?body=${encodedText}`;
+            document.getElementById('share-email').href = `mailto:?subject=${encodedTitle}&body=${encodedText}`;
+            document.getElementById('share-copy').onclick = () => copyShareLink(payload.url);
+            const native = document.getElementById('share-native');
+            native.style.display = navigator.share ? 'flex' : 'none';
+            native.onclick = async () => { try { await navigator.share(payload); closeShareSheet(); } catch (error) { if (error?.name !== 'AbortError') showToast('DEVICE SHARE IS UNAVAILABLE'); } };
+            overlay.style.display = 'flex';
+            document.getElementById('share-copy').focus();
+        }
+        async function sharePayloadWithFallback(data) {
+            const payload = sharePayload(data);
+            if (!navigator.share) return openShareFallback(payload);
+            try { await navigator.share(payload); }
+            catch (error) { if (error?.name !== 'AbortError') openShareFallback(payload); }
+        }
         async function sharePlayback() {
             const title = activePlayerContext.title || 'Stream HD media';
-            const shareData = { title, text: `Watch ${title} on Stream HD`, url: activePlaybackSource || location.href };
-            try { if (navigator.share) await navigator.share(shareData); else { await navigator.clipboard.writeText(shareData.url); showToast('MEDIA LINK COPIED'); } } catch (error) { if (error?.name !== 'AbortError') showToast('SHARING IS NOT AVAILABLE'); }
+            await sharePayloadWithFallback({ title, text: `Watch ${title} on Stream HD`, url: activePlaybackSource || location.href });
         }
         ['audio-player', 'native-video'].forEach(id => {
             const media = document.getElementById(id);
@@ -2642,14 +2705,9 @@
 
         function shareCurrentDetails() {
             const ch = CHANNELS[activeDetailsEntry];
-            const text = `Hey! I am watching ${ch.name} on STREAM HD. Check it out! 🍿🎬`;
-
-            if (navigator.share) {
-                navigator.share({ title: 'Stream HD', text: text, url: window.location.href })
-                .catch(console.error);
-            } else {
-                window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text + " " + window.location.href)}`, '_blank');
-            }
+            if (!ch) return showToast('SELECT A TITLE FIRST');
+            const text = `Hey! I am watching ${ch.name} on STREAM HD. Check it out!`;
+            sharePayloadWithFallback({ title: ch.name || 'Stream HD', text, url: window.location.href });
         }
 
         function openSearch(type) {

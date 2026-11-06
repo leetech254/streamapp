@@ -12,6 +12,7 @@ A responsive single-page media player for sources that you own or are authorized
 - Search cards show a readable title, provider/type metadata, release or publication context, ratings when supplied, and a truncated description with safe fallbacks across TMDB, Movie API, YouTube, YOCINEMA, Jamendo, Internet Archive, and Kenya TV results
 - Authorized Movie API and Jamendo search results queue the remaining playable results in a responsive **Next Up** panel; native audio/video automatically advances when enabled, while users can disable autoplay or choose **Play Next** manually
 - Public home and About links include canonical URLs plus Open Graph and Twitter/X metadata with a 1200×630 branded `/social-card.png`, so shared Stream HD links show a readable image preview on supported social platforms
+- Playback and title-details sharing first uses the mobile browser's native Web Share sheet; unsupported browsers or unavailable sheets receive a responsive fallback with WhatsApp, Telegram, SMS/Messages, email, copy-link, and retry-device-share actions
 
 When a native player is active, keyboard shortcuts include **Space** or **K** for play/pause, **Left/Right Arrow** for 10-second seeking, **Home/End** for the beginning/end, **R** to replay on-demand media, **M** to mute/unmute, **F** for fullscreen, **P** for Picture-in-Picture, **[ / ]** for subtitle timing, and **?** for the shortcut guide. Shortcuts are ignored while focus is inside an input, textarea, or select control and when browser modifier keys are held.
 
