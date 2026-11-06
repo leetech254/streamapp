@@ -9,6 +9,7 @@
     <meta name="referrer" content="no-referrer-when-downgrade">
     <meta name="description" content="Stream HD is a fast, installable media PWA for live streams, video, audio, subtitles, and catalog discovery.">
     <meta name="robots" content="index,follow">
+    <meta name="application-name" content="Stream HD">
     <link rel="canonical" href="https://stream.leetec.online/">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <meta property="og:type" content="website">
@@ -37,7 +38,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
-    <title>STREAM HD | MOVIE BOX EDITION</title>
+    <title>Stream HD | Installable Media Player &amp; PWA</title>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Stream HD",
+      "url": "https://stream.leetec.online/",
+      "description": "A fast, installable media PWA for live streams, video, audio, subtitles, and catalog discovery.",
+      "applicationCategory": "MultimediaApplication",
+      "operatingSystem": "Android, iOS, Windows, macOS, Linux",
+      "browserRequirements": "Requires a modern web browser",
+      "image": "https://stream.leetec.online/social-card.png",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "featureList": ["Background playback", "Picture-in-picture", "Subtitle support", "Installable PWA", "Media sharing"]
+    }
+    </script>
 
     <script src="https://cdn.jsdelivr.net/npm/artplayer@5.4.0/dist/artplayer.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13"></script>
