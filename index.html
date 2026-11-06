@@ -3027,20 +3027,35 @@
             showToast(audioMode ? 'OPENING OFFICIAL AUDIO' : 'OPENING OFFICIAL VIDEO');
             try {
                 const YT = await ensureYouTubeIframeApi();
+                let playerReady = false;
+                const fallbackToEmbed = () => {
+                    if (playerReady || activeYouTubeVideoId !== id) return;
+                    try { youtubePlayer?.destroy?.(); } catch {}
+                    youtubePlayer = null;
+                    frame.src = youtubeEmbedUrl(encodeURIComponent(id));
+                    monitorEmbeddedFrame(frame, audioMode ? 'official YouTube audio video' : 'official YouTube video', () => playYouTubeResult(id, title, audioMode));
+                };
                 const events = {
-                    onReady: event => { event.target.playVideo(); },
+                    onReady: event => { playerReady = true; event.target.playVideo(); },
                     onStateChange: handleYouTubePlayerState,
                     onError: () => setPlayerStatus('YouTube could not play this video.', [{ label: '↻ RETRY', onClick: () => playYouTubeResult(id, title, audioMode) }])
                 };
-                if (youtubePlayer && typeof youtubePlayer.loadVideoById === 'function' && youtubePlayer.getIframe?.()) {
+                const existingIframe = youtubePlayer?.getIframe?.();
+                const existingPlayerUsable = Boolean(existingIframe && /youtube(?:-nocookie)?\.com\/embed\//i.test(existingIframe.src || ''));
+                if (existingPlayerUsable && typeof youtubePlayer.loadVideoById === 'function') {
+                    playerReady = true;
                     youtubePlayer.loadVideoById({ videoId: id, startSeconds: 0 });
                 } else {
+                    try { youtubePlayer?.destroy?.(); } catch {}
+                    youtubePlayer = null;
+                    frame.src = youtubeEmbedUrl(encodeURIComponent(id));
                     youtubePlayer = new YT.Player('yt-frame', {
                         videoId: id,
                         playerVars: { autoplay: 1, rel: 0, playsinline: 1, modestbranding: 1, origin: window.location.origin },
                         events
                     });
                 }
+                setTimeout(fallbackToEmbed, 10000);
             } catch (error) {
                 frame.src = youtubeEmbedUrl(encodeURIComponent(id));
                 monitorEmbeddedFrame(frame, audioMode ? 'official YouTube audio video' : 'official YouTube video', () => playYouTubeResult(id, title, audioMode));
