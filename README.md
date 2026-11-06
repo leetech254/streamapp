@@ -10,6 +10,8 @@ A responsive single-page media player for sources that you own or are authorized
 - Phone/tablet responsive layout, keyboard/TV remote navigation, and Picture-in-Picture where supported
 - Browser-local library backup/import and channel management
 
+When a native player is active, keyboard shortcuts include **Space** or **K** for play/pause, **Left/Right Arrow** for 10-second seeking, **Home/End** for the beginning/end, **R** to replay on-demand media, **M** to mute/unmute, **F** for fullscreen, **P** for Picture-in-Picture, **[ / ]** for subtitle timing, and **?** for the shortcut guide. Shortcuts are ignored while focus is inside an input, textarea, or select control and when browser modifier keys are held.
+
 ## Deploy
 
 Deploy the repository root to Vercel. Keep `index.html`, `api/`, `vercel.json`, `manifest.json`, `sw.js`, and `icon.svg` at the root.

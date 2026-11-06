@@ -1121,15 +1121,15 @@
             <div id="player-status" class="player-status" role="status" aria-live="polite">Choose a channel or paste a supported media link.</div>
             <div id="provider-restriction-banner" class="provider-restriction-banner" role="alert" aria-live="assertive"></div>
             <div id="playback-dock" class="playback-dock" aria-label="Playback controls">
-                <button type="button" onclick="seekPlayback(-10)" aria-label="Seek backward 10 seconds">↶ 10s</button>
-                <button id="playback-toggle" type="button" onclick="togglePlayback()" aria-label="Play or pause">▶ PLAY</button>
-                <button type="button" onclick="seekPlayback(30)" aria-label="Seek forward 30 seconds">30s ↷</button>
+                <button type="button" onclick="seekPlayback(-10)" aria-label="Seek backward 10 seconds" aria-keyshortcuts="ArrowLeft">↶ 10s</button>
+                <button id="playback-toggle" type="button" onclick="togglePlayback()" aria-label="Play or pause" aria-keyshortcuts="Space K">▶ PLAY</button>
+                <button type="button" onclick="seekPlayback(30)" aria-label="Seek forward 30 seconds" aria-keyshortcuts="ArrowRight">30s ↷</button>
                 <span id="playback-time" class="playback-time">0:00 / 0:00</span>
                 <select id="playback-speed" onchange="setPlaybackRate(this.value)" aria-label="Playback speed">
                     <option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
                 </select>
-                <button id="pip-toggle" type="button" onclick="togglePiP()" aria-label="Enter picture in picture">▣ PiP</button>
-                <button type="button" onclick="fullscreenPlayback()" aria-label="Fullscreen playback">⛶</button>
+                <button id="pip-toggle" type="button" onclick="togglePiP()" aria-label="Enter picture in picture" aria-keyshortcuts="P">▣ PiP</button>
+                <button type="button" onclick="fullscreenPlayback()" aria-label="Fullscreen playback" aria-keyshortcuts="F">⛶</button>
                 <button type="button" onclick="sharePlayback()" aria-label="Share current media">↗ SHARE</button>
             </div>
             <div class="media-tools" aria-label="Subtitle and playlist tools">
@@ -1815,6 +1815,21 @@
             const action = media.paused ? attemptMediaPlay(media) : Promise.resolve(media.pause());
             Promise.resolve(action).then(updatePlaybackDock).catch(() => showToast('PRESS THE PLAYER PLAY CONTROL'));
         }
+        function replayPlayback() {
+            const media = getActiveNativeMedia();
+            if (!media || !Number.isFinite(media.duration)) return showToast('REPLAY IS AVAILABLE FOR ON-DEMAND MEDIA ONLY');
+            media.currentTime = 0;
+            attemptMediaPlay(media).then(updatePlaybackDock).catch(() => showToast('PRESS THE PLAYER PLAY CONTROL'));
+        }
+        function toggleMute() {
+            const media = getActiveNativeMedia();
+            if (!media) return showToast('SELECT AUDIO OR VIDEO FIRST');
+            media.muted = !media.muted;
+            showToast(media.muted ? 'MUTED' : 'UNMUTED');
+        }
+        function showKeyboardShortcuts() {
+            showToast('SHORTCUTS: SPACE/K PLAY · ←/→ SEEK · R REPLAY · M MUTE · F FULLSCREEN · P PIP · HOME/END START OR END');
+        }
         function setPlaybackRate(value) {
             const media = getActiveNativeMedia();
             const rate = Number(value);
@@ -1854,12 +1869,20 @@
         });
         document.addEventListener('keydown', event => {
             if (event.target && /input|textarea|select/i.test(event.target.tagName)) return;
+            if (event.ctrlKey || event.metaKey || event.altKey) return;
             const media = getActiveNativeMedia();
             if (!media) return;
-            if (event.key === ' ' || event.key.toLowerCase() === 'k') { event.preventDefault(); togglePlayback(); }
+            const key = event.key.toLowerCase();
+            if (event.key === ' ' || key === 'k') { event.preventDefault(); togglePlayback(); }
             else if (event.key === 'ArrowLeft') { event.preventDefault(); seekPlayback(-10); }
             else if (event.key === 'ArrowRight') { event.preventDefault(); seekPlayback(30); }
-            else if (event.key === 'f') { event.preventDefault(); fullscreenPlayback(); }
+            else if (event.key === 'Home') { event.preventDefault(); if (Number.isFinite(media.duration)) { media.currentTime = 0; updatePlaybackDock(); } }
+            else if (event.key === 'End') { event.preventDefault(); if (Number.isFinite(media.duration)) { media.currentTime = Math.max(0, media.duration - 0.1); updatePlaybackDock(); } }
+            else if (key === 'r') { event.preventDefault(); replayPlayback(); }
+            else if (key === 'm') { event.preventDefault(); toggleMute(); }
+            else if (key === 'f') { event.preventDefault(); fullscreenPlayback(); }
+            else if (key === 'p') { event.preventDefault(); togglePiP(); }
+            else if (event.key === '?') { event.preventDefault(); showKeyboardShortcuts(); }
             else if (event.key === '[') { event.preventDefault(); adjustSubtitleOffset(-0.5); }
             else if (event.key === ']') { event.preventDefault(); adjustSubtitleOffset(0.5); }
         });
