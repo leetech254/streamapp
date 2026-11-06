@@ -2170,12 +2170,30 @@
             });
             setPlayerStatus(reason, [{ label: '▶ PLAY VIDEO', onClick: retry }]);
         }
+        function nativeMediaErrorText(video, url, kind) {
+            const code = video?.error?.code;
+            let parsed;
+            try { parsed = new URL(url, window.location.origin); } catch {}
+            const isMovieApi = parsed?.origin === window.location.origin && parsed?.pathname === '/api/movieapi';
+            if (!navigator.onLine) return 'You are offline. Reconnect and try the video again.';
+            if (isMovieApi) return 'The Movie API provider did not return playable media. The provider may be blocking server playback; Stream HD cannot bypass that restriction.';
+            if (code === MediaError.MEDIA_ERR_NETWORK) return 'The video source could not be reached. It may be offline, blocked by access controls, or unavailable to this browser.';
+            if (code === MediaError.MEDIA_ERR_DECODE) return 'The browser received the video but could not decode it. Try an MP4/WebM source or another device.';
+            if (code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) return kind === 'hls' ? 'This HLS stream is unavailable or not supported by the current browser.' : 'This URL is not a supported direct video file. Use MP4, WebM, MOV, or a playable HLS URL.';
+            return 'The video source could not start. Check that the URL is a direct playable source and try again.';
+        }
+        function showNativeMediaError(video, url, kind) {
+            const message = nativeMediaErrorText(video, url, kind);
+            const retry = () => playNativeVideo(url, kind);
+            setPlayerStatus(message, [{ label: '↻ RETRY VIDEO', onClick: retry }]);
+            if (/Movie API provider/i.test(message)) showToast('PROVIDER BLOCKED OR DID NOT RETURN PLAYABLE MEDIA');
+        }
         function playNativeVideoWhenReady(video, url, kind) {
             if (video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return attemptMediaPlay(video).catch(error => { if (error?.name === 'NotAllowedError') showNativePlayAction(video, url, kind); else setPlayerStatus('Video could not start. Check the media format or source access.', [{ label: '↻ RETRY VIDEO', onClick: () => playNativeVideo(url, kind) }]); });
             let settled = false;
             const cleanup = () => { video.removeEventListener('canplay', onReady); video.removeEventListener('error', onError); clearTimeout(timer); };
             const onReady = () => { if (settled) return; settled = true; cleanup(); attemptMediaPlay(video).catch(error => { if (error?.name === 'NotAllowedError') showNativePlayAction(video, url, kind); else setPlayerStatus('Video could not start. Check the media format or source access.', [{ label: '↻ RETRY VIDEO', onClick: () => playNativeVideo(url, kind) }]); }); };
-            const onError = () => { if (settled) return; settled = true; cleanup(); setPlayerStatus('Video source failed to load. Check the URL, authorization, or device codec.', [{ label: '↻ RETRY VIDEO', onClick: () => playNativeVideo(url, kind) }]); };
+            const onError = () => { if (settled) return; settled = true; cleanup(); showNativeMediaError(video, url, kind); };
             const timer = setTimeout(() => { if (settled) return; settled = true; cleanup(); setPlayerStatus('Video is taking too long to load. Check the source or try again.', [{ label: '↻ RETRY VIDEO', onClick: () => playNativeVideo(url, kind) }]); }, 15000);
             video.addEventListener('canplay', onReady); video.addEventListener('error', onError);
         }

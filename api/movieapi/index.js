@@ -52,7 +52,10 @@ async function mediaFailure(upstream) {
   const status = Number(upstream.status) || 502;
   let text = '';
   try { text = (await upstream.text()).slice(0, 1200); } catch {}
-  const blocked = status === 401 || status === 403 || /access denied|automated requests|bot|forbidden|blocked|bff\s+play\s+api\s+returned\s+http\s+40[13]|http\s+40[13]/i.test(text);
+  let nested = '';
+  try { nested = JSON.stringify(JSON.parse(text)); } catch {}
+  const providerText = `${text} ${nested}`;
+  const blocked = status === 401 || status === 403 || /access denied|automated requests|bot|forbidden|blocked|bff\s+play\s+api\s+returned\s+http\s+40[13]|http\s*[:=]?\s*40[13]|status\s*[:=]?\s*40[13]/i.test(providerText);
   return {
     status: blocked ? 502 : (status >= 500 ? 502 : status),
     code: blocked ? 'UPSTREAM_ACCESS_BLOCKED' : 'UPSTREAM_MEDIA_ERROR',
