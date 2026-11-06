@@ -1673,7 +1673,7 @@
             activePlaylistIndex = index; playlistLaunchPending = true; renderPlaylist();
             playDirectMedia(item.url, item.title || 'Playlist media');
         }
-        function playNextPlaylistItem() { if (activePlaylistIndex >= 0 && activePlaylistIndex + 1 < customPlaylist.length) playPlaylistItem(activePlaylistIndex + 1); else if (activePlaylistIndex >= 0) { activePlaylistIndex = -1; renderPlaylist(); showToast('PLAYLIST COMPLETE'); } }
+        function playNextPlaylistItem() { if (activePlaylistIndex >= 0 && activePlaylistIndex + 1 < customPlaylist.length) { playPlaylistItem(activePlaylistIndex + 1); return true; } if (activePlaylistIndex >= 0) { activePlaylistIndex = -1; renderPlaylist(); showToast('PLAYLIST COMPLETE'); } return false; }
         function movePlaylistItem(index, direction) { const target = index + direction; if (target < 0 || target >= customPlaylist.length) return; [customPlaylist[index], customPlaylist[target]] = [customPlaylist[target], customPlaylist[index]]; if (activePlaylistIndex === index) activePlaylistIndex = target; else if (activePlaylistIndex === target) activePlaylistIndex = index; savePlaylist(); renderPlaylist(); }
         function removePlaylistItem(index) { customPlaylist.splice(index, 1); if (activePlaylistIndex === index) activePlaylistIndex = -1; else if (activePlaylistIndex > index) activePlaylistIndex--; savePlaylist(); renderPlaylist(); }
         function clearPlaylist() { customPlaylist = []; activePlaylistIndex = -1; savePlaylist(); renderPlaylist(); showToast('PLAYLIST CLEARED'); }
@@ -1839,7 +1839,18 @@
             media.addEventListener('timeupdate', () => { if (media.currentTime > 0) persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
             media.addEventListener('loadedmetadata', () => { media.playbackRate = getPlaybackRate(); persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
             media.addEventListener('error', () => { setPlayerStatus(`${id === 'audio-player' ? 'Audio' : 'Video'} source failed to load.`, [{ label: '↻ RETRY', onClick: () => playDirectMedia(activePlaybackSource, activePlayerContext.title || 'Stream HD', activePlaybackKind || (id === 'audio-player' ? 'audio' : 'video')) }]); });
-            media.addEventListener('ended', () => { clearPlaybackState(); activePlaybackSource = ''; updatePlaybackDock(); playNextPlaylistItem(); });
+            media.addEventListener('ended', () => {
+                const source = activePlaybackSource;
+                const title = activePlayerContext.title || 'Stream HD media';
+                const kind = activePlaybackKind || (media.tagName === 'AUDIO' ? 'audio' : 'video');
+                clearPlaybackState();
+                const advanced = playNextPlaylistItem();
+                if (advanced) return;
+                activePlaybackSource = source;
+                activePlaybackKind = kind;
+                updatePlaybackDock();
+                if (source) setPlayerStatus(`${media.tagName === 'AUDIO' ? 'Audio' : 'Video'} ended — Replay available.`, [{ label: '↻ REPLAY', onClick: () => playDirectMedia(source, title, kind) }]);
+            });
         });
         document.addEventListener('keydown', event => {
             if (event.target && /input|textarea|select/i.test(event.target.tagName)) return;
