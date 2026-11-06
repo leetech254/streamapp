@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Stream HD Media Player",
   "short_name": "Stream HD",
-  "description": "A responsive player for live streams, video, audio, subtitles, and catalog metadata.",
+  "description": "A fast, installable media PWA for live streams, video, audio, subtitles, and catalog discovery.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
