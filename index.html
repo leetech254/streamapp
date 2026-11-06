@@ -737,6 +737,17 @@
             .api-card-title { font-size:.72rem; }
             .api-card-meta, .api-card-description { font-size:.64rem; }
         }
+        .next-suggestion-panel { display:none; align-items:center; gap:12px; margin:10px auto 0; width:min(94%,760px); padding:10px 12px; border:1px solid rgba(255,215,0,.3); border-radius:12px; background:linear-gradient(90deg,rgba(255,215,0,.08),rgba(0,0,0,.35)); }
+        .next-suggestion-panel.active { display:flex; }
+        .next-suggestion-copy { min-width:0; flex:1; text-align:left; }
+        .next-suggestion-label { display:block; color:var(--primary); font:700 .62rem 'Source Code Pro',monospace; letter-spacing:.7px; }
+        .next-suggestion-title { display:block; overflow:hidden; color:#fff; font:800 .78rem 'Orbitron',sans-serif; text-overflow:ellipsis; white-space:nowrap; }
+        .next-suggestion-meta { display:block; overflow:hidden; color:#999; font:600 .65rem 'Source Code Pro',monospace; text-overflow:ellipsis; white-space:nowrap; }
+        .next-suggestion-panel button { flex:0 0 auto; border:1px solid var(--primary); border-radius:8px; padding:7px 9px; color:var(--primary); background:transparent; cursor:pointer; font:700 .64rem 'Source Code Pro',monospace; }
+        .next-suggestion-panel button:hover, .next-suggestion-panel button:focus-visible { color:#000; background:var(--primary); outline:2px solid #fff; outline-offset:1px; }
+        .next-suggestion-toggle { display:inline-flex; align-items:center; gap:5px; color:#bbb; font:600 .62rem 'Source Code Pro',monospace; white-space:nowrap; }
+        .next-suggestion-toggle input { accent-color:var(--primary); }
+        @media (max-width:520px) { .next-suggestion-panel { align-items:flex-start; flex-wrap:wrap; } .next-suggestion-copy { flex-basis:calc(100% - 12px); } .next-suggestion-toggle { margin-left:auto; } }
 
         .details-modal { 
             width: 90%; 
@@ -1135,6 +1146,12 @@
             </div>
             <div id="player-status" class="player-status" role="status" aria-live="polite">Choose a channel or paste a supported media link.</div>
             <div id="provider-restriction-banner" class="provider-restriction-banner" role="alert" aria-live="assertive"></div>
+            <section id="next-suggestion-panel" class="next-suggestion-panel" aria-label="Next suggested media" aria-live="polite">
+                <div class="next-suggestion-copy"><span class="next-suggestion-label">NEXT UP</span><strong id="next-suggestion-title" class="next-suggestion-title">No suggestion queued</strong><span id="next-suggestion-meta" class="next-suggestion-meta"></span></div>
+                <label class="next-suggestion-toggle"><input id="autoplay-suggestions" type="checkbox" checked onchange="setAutoplaySuggestions(this.checked)"> AUTOPLAY</label>
+                <button id="next-suggestion-play" type="button" onclick="playNextSuggestion(true)">▶ PLAY NEXT</button>
+                <button type="button" onclick="clearSuggestionQueue()" aria-label="Dismiss next suggestion">×</button>
+            </section>
             <div id="playback-dock" class="playback-dock" aria-label="Playback controls">
                 <button type="button" onclick="seekPlayback(-10)" aria-label="Seek backward 10 seconds" aria-keyshortcuts="ArrowLeft">↶ 10s</button>
                 <button id="playback-toggle" type="button" onclick="togglePlayback()" aria-label="Play or pause" aria-keyshortcuts="Space K">▶ PLAY</button>
@@ -1643,6 +1660,9 @@
         let activePlaybackKind = '';
         let activePlaylistIndex = -1;
         let playlistLaunchPending = false;
+        let suggestionQueue = [];
+        const AUTOPLAY_SUGGESTIONS_KEY = 'streamhd_autoplay_suggestions_v1';
+        let autoplaySuggestions = readJsonStorage(AUTOPLAY_SUGGESTIONS_KEY, true) !== false;
         const PLAYLIST_KEY = 'streamhd_custom_playlist_v1';
         let customPlaylist = readJsonStorage(PLAYLIST_KEY, []);
         if (!Array.isArray(customPlaylist)) customPlaylist = [];
@@ -1689,6 +1709,31 @@
             playDirectMedia(item.url, item.title || 'Playlist media');
         }
         function playNextPlaylistItem() { if (activePlaylistIndex >= 0 && activePlaylistIndex + 1 < customPlaylist.length) { playPlaylistItem(activePlaylistIndex + 1); return true; } if (activePlaylistIndex >= 0) { activePlaylistIndex = -1; renderPlaylist(); showToast('PLAYLIST COMPLETE'); } return false; }
+        function setAutoplaySuggestions(enabled) { autoplaySuggestions = Boolean(enabled); try { localStorage.setItem(AUTOPLAY_SUGGESTIONS_KEY, String(autoplaySuggestions)); } catch {} renderSuggestionQueue(); }
+        function renderSuggestionQueue() {
+            const panel = document.getElementById('next-suggestion-panel');
+            const title = document.getElementById('next-suggestion-title');
+            const meta = document.getElementById('next-suggestion-meta');
+            const toggle = document.getElementById('autoplay-suggestions');
+            if (!panel || !title || !meta) return;
+            if (toggle) toggle.checked = autoplaySuggestions;
+            const next = suggestionQueue[0];
+            panel.classList.toggle('active', Boolean(next));
+            if (!next) { title.textContent = 'No suggestion queued'; meta.textContent = ''; return; }
+            title.textContent = next.title || 'Suggested media'; meta.textContent = next.meta || 'Ready to play next';
+        }
+        function setSuggestionQueue(items) {
+            suggestionQueue = Array.isArray(items) ? items.filter(item => item && typeof item.play === 'function').slice(0, 24) : [];
+            renderSuggestionQueue();
+        }
+        function clearSuggestionQueue() { suggestionQueue = []; renderSuggestionQueue(); }
+        async function playNextSuggestion(manual = false) {
+            if (!suggestionQueue.length) return false;
+            if (!manual && !autoplaySuggestions) { setPlayerStatus('Media ended — next suggestion is ready.', [{ label: '▶ PLAY NEXT', onClick: () => playNextSuggestion(true) }]); return false; }
+            const next = suggestionQueue.shift(); renderSuggestionQueue();
+            try { await next.play(); showToast(`PLAYING NEXT: ${next.title || 'SUGGESTED MEDIA'}`); return true; }
+            catch (error) { setPlayerStatus(`Could not start suggested media: ${next.title || 'Untitled'}.`, [{ label: '▶ TRY NEXT', onClick: () => playNextSuggestion(true) }]); return false; }
+        }
         function movePlaylistItem(index, direction) { const target = index + direction; if (target < 0 || target >= customPlaylist.length) return; [customPlaylist[index], customPlaylist[target]] = [customPlaylist[target], customPlaylist[index]]; if (activePlaylistIndex === index) activePlaylistIndex = target; else if (activePlaylistIndex === target) activePlaylistIndex = index; savePlaylist(); renderPlaylist(); }
         function removePlaylistItem(index) { customPlaylist.splice(index, 1); if (activePlaylistIndex === index) activePlaylistIndex = -1; else if (activePlaylistIndex > index) activePlaylistIndex--; savePlaylist(); renderPlaylist(); }
         function clearPlaylist() { customPlaylist = []; activePlaylistIndex = -1; savePlaylist(); renderPlaylist(); showToast('PLAYLIST CLEARED'); }
@@ -1876,6 +1921,7 @@
                 clearPlaybackState();
                 const advanced = playNextPlaylistItem();
                 if (advanced) return;
+                if (suggestionQueue.length) { playNextSuggestion(); return; }
                 activePlaybackSource = source;
                 activePlaybackKind = kind;
                 updatePlaybackDock();
@@ -2909,7 +2955,7 @@
         function renderMovieApiResults(results, type) {
             const resBox = document.getElementById('api-results');
             resBox.replaceChildren();
-            results.forEach(item => {
+            results.forEach((item, resultIndex) => {
                 const id = String(item && (item.subjectId || item.id) || '').trim(); if (!/^\d+$/.test(id)) return;
                 const title = String(item.title || item.name || 'Untitled');
                 const year = String(item.year || item.release_year || item.releaseDate || '').slice(0, 4);
@@ -2924,6 +2970,12 @@
                         episode = window.prompt('Episode number', '1');
                         if (!/^\d+$/.test(String(season || '')) || !/^\d+$/.test(String(episode || '')) || Number(season) < 1 || Number(episode) < 1 || Number(season) > 99 || Number(episode) > 999) return showToast('ENTER VALID SEASON AND EPISODE NUMBERS');
                     }
+                    setSuggestionQueue(results.slice(resultIndex + 1).map(nextItem => {
+                        const nextId = String(nextItem && (nextItem.subjectId || nextItem.id) || '').trim();
+                        const nextTitle = String(nextItem?.title || nextItem?.name || 'Suggested title');
+                        const nextYear = String(nextItem?.year || nextItem?.release_year || nextItem?.releaseDate || '').slice(0, 4);
+                        return { title: nextTitle, meta: `AUTHORIZED API · ${type === 'tv' ? `SERIES S${season} E${episode}` : 'MOVIE'}${nextYear ? ` · ${nextYear}` : ''}`, play: () => playMovieApiItem(nextId, nextTitle, type, season, episode, nextItem) };
+                    }));
                     closeSearch();
                     await playMovieApiItem(id, title, type, season, episode, item);
                 } });
@@ -3091,13 +3143,14 @@
         function renderJamendoResults(results) {
             const resBox = document.getElementById('api-results');
             resBox.replaceChildren();
-            results.filter(item => item && safeWebUrl(item.audio)).forEach(item => {
+            results.filter(item => item && safeWebUrl(item.audio)).forEach((item, resultIndex, playableResults) => {
                 const title = String(item.name || 'Untitled track');
                 const artist = String(item.artist_name || 'Unknown artist');
                 const img = safeWebUrl(item.image || item.album_image) || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=222&color=ffd700&size=512`;
                 const duration = Number(item.duration);
                 const durationLabel = Number.isFinite(duration) && duration > 0 ? `${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')}` : '';
                 const card = createSearchResultCard({ title, description: item.description || item.album_name || 'Licensed Jamendo track available for direct playback.', meta: `JAMENDO · ${artist}${item.album_name ? ` · ${item.album_name}` : ''}${durationLabel ? ` · ${durationLabel}` : ''}`, image: img, alt: `${title} artwork`, ariaLabel: `Play ${title} by ${artist}`, onClick: () => {
+                    setSuggestionQueue(playableResults.slice(resultIndex + 1).map(nextItem => ({ title: String(nextItem.name || 'Suggested track'), meta: `JAMENDO · ${String(nextItem.artist_name || 'Unknown artist')}`, play: () => { const nextTitle = String(nextItem.name || 'Suggested track'); const entry = { name: nextTitle.toUpperCase(), artist: String(nextItem.artist_name || 'Unknown artist'), type: 'audio', category: 'music', url: safeWebUrl(nextItem.audio), downloadUrl: safeWebUrl(nextItem.audiodownload) || safeWebUrl(nextItem.audio), img: safeWebUrl(nextItem.image || nextItem.album_image), shareurl: safeWebUrl(nextItem.shareurl), license: nextItem.license_ccurl || '', watched: false, fav: false, reqVip: false }; CHANNELS.unshift(entry); save(); return switchSource(0); } })));
                     const entry = { name: title.toUpperCase(), artist, type: 'audio', category: 'music', url: safeWebUrl(item.audio), downloadUrl: safeWebUrl(item.audiodownload) || safeWebUrl(item.audio), img, shareurl: safeWebUrl(item.shareurl), license: item.license_ccurl || '', watched: false, fav: false, reqVip: false };
                     CHANNELS.unshift(entry); save(); closeSearch(); switchSource(0);
                 } });
