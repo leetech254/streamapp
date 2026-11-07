@@ -1796,6 +1796,29 @@
             renderSuggestionQueue();
         }
         function clearSuggestionQueue() { suggestionQueue = []; renderSuggestionQueue(); }
+        function youtubeTitleIsLyric(title) { return /\blyric(?:s| video)?\b|official lyrics|lyric video/i.test(String(title || '')); }
+        function randomizeYouTubeQueue(results, currentId, audioMode) {
+            const candidates = results.map((item, index) => {
+                const id = String(item?.id?.videoId || '').trim();
+                const title = String(item?.snippet?.title || 'YouTube video').replace(/<[^>]+>/g, '');
+                const channel = String(item?.snippet?.channelTitle || 'Official YouTube channel');
+                return { item, index, id, title, channel, lyric: youtubeTitleIsLyric(title) };
+            }).filter(entry => entry.id && entry.id !== currentId);
+            const queue = [];
+            let lastChannel = '';
+            let lastLyric = false;
+            while (candidates.length && queue.length < 24) {
+                const compatible = candidates.filter(entry => entry.channel !== lastChannel && (!lastLyric || !entry.lyric));
+                const pool = (compatible.length ? compatible : candidates).slice(0, Math.min(6, candidates.length));
+                const chosen = pool[Math.floor(Math.random() * pool.length)];
+                candidates.splice(candidates.indexOf(chosen), 1);
+                const meta = `${audioMode ? 'OFFICIAL AUDIO VIDEO' : 'OFFICIAL VIDEO'} · ${chosen.channel}${chosen.lyric ? ' · LYRIC' : ''}`;
+                queue.push({ title: chosen.title, meta, play: () => playYouTubeResult(chosen.id, chosen.title, audioMode) });
+                lastChannel = chosen.channel;
+                lastLyric = chosen.lyric;
+            }
+            return queue;
+        }
         async function playNextSuggestion(manual = false) {
             if (!suggestionQueue.length) return false;
             if (!manual && !autoplaySuggestions) { setPlayerStatus('Media ended — next suggestion is ready.', [{ label: '▶ PLAY NEXT', onClick: () => playNextSuggestion(true) }]); return false; }
@@ -2983,13 +3006,7 @@
                 const img = safeWebUrl(item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url) || `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
                 const published = item.snippet.publishedAt ? new Date(item.snippet.publishedAt).getFullYear() : '';
                 const card = createSearchResultCard({ title, description: item.snippet.description, meta: `${audioMode ? 'OFFICIAL AUDIO VIDEO' : 'OFFICIAL VIDEO'} · ${channel}${published ? ` · ${published}` : ''}`, image: img, alt: `${title} thumbnail`, ariaLabel: `Play ${title}`, onClick: () => {
-                    const nextItems = results.slice(resultIndex + 1);
-                    setSuggestionQueue(nextItems.map(nextItem => {
-                        const nextId = String(nextItem?.id?.videoId || '').trim();
-                        const nextTitle = String(nextItem?.snippet?.title || 'YouTube video').replace(/<[^>]+>/g, '');
-                        const nextChannel = String(nextItem?.snippet?.channelTitle || 'Official YouTube channel');
-                        return { title: nextTitle, meta: `${audioMode ? 'OFFICIAL AUDIO VIDEO' : 'OFFICIAL VIDEO'} · ${nextChannel}`, play: () => playYouTubeResult(nextId, nextTitle, audioMode) };
-                    }));
+                    setSuggestionQueue(randomizeYouTubeQueue(results, videoId, audioMode));
                     playYouTubeResult(videoId, title, audioMode);
                 } });
                 resBox.appendChild(card);
