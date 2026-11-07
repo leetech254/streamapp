@@ -229,6 +229,7 @@
         .volume-control { display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:0 7px; border:1px solid rgba(0,243,255,.2); border-radius:8px; color:#8fefff; font:700 .65rem 'Source Code Pro',monospace; }
         .volume-control input[type="range"] { width:82px; accent-color:var(--primary); }
         .volume-control select { min-height:28px; padding:4px 6px; font-size:.62rem; }
+        .equalizer-control { color:#ffd700; }
         @media (max-width:700px) { .volume-control { flex:1 1 100%; justify-content:center; } .volume-control input[type="range"] { width:min(46vw,150px); } }
         @media (max-width:700px) { .playback-dock { gap:5px; padding:7px 4px; } .playback-dock button,.playback-dock select { padding:6px 7px; font-size:.61rem; } .playback-dock .playback-time { min-width:78px; } }
         .media-tools { display:flex; gap:7px; flex-wrap:wrap; align-items:center; width:100%; margin-top:8px; }
@@ -1246,6 +1247,7 @@
                 <span id="playback-time" class="playback-time">0:00 / 0:00</span>
                 <label class="volume-control" title="Native media volume"><span aria-hidden="true">🔊</span><input id="playback-volume" type="range" min="0" max="1" step="0.01" value="1" oninput="setPlaybackVolume(this.value)" aria-label="Playback volume"><span id="playback-volume-value">100%</span></label>
                 <label class="volume-control" title="Boost native audio and video"><span>BOOST</span><select id="volume-boost" onchange="setVolumeBoost(this.value)" aria-label="Volume booster"><option value="1">OFF</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></label>
+                <label class="volume-control equalizer-control" title="Native media equalizer"><span>EQ</span><select id="equalizer-preset" onchange="setEqualizerPreset(this.value)" aria-label="Equalizer preset"><option value="flat">FLAT</option><option value="bass">BASS BOOST</option><option value="vocal">VOCAL</option><option value="treble">TREBLE</option><option value="night">NIGHT</option></select></label>
                 <select id="playback-speed" onchange="setPlaybackRate(this.value)" aria-label="Playback speed">
                     <option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
                 </select>
@@ -1801,6 +1803,7 @@
         const PLAYBACK_STATE_KEY = 'streamhd_last_playback';
         const PLAYBACK_RATE_KEY = 'streamhd_playback_rate';
         const VOLUME_SETTINGS_KEY = 'streamhd_volume_settings_v1';
+        const EQ_SETTINGS_KEY = 'streamhd_equalizer_preset_v1';
         let audioContext = null;
         const mediaAudioGraphs = new WeakMap();
         function getVolumeSettings() {
@@ -1810,6 +1813,15 @@
             return { volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1, boost: [1, 1.25, 1.5, 2].includes(boost) ? boost : 1 };
         }
         function saveVolumeSettings(settings) { try { localStorage.setItem(VOLUME_SETTINGS_KEY, JSON.stringify(settings)); } catch {} }
+        const EQUALIZER_PRESETS = {
+            flat: { label: 'Flat', bass: 0, mid: 0, treble: 0 },
+            bass: { label: 'Bass Boost', bass: 6, mid: -1, treble: 0 },
+            vocal: { label: 'Vocal', bass: -2, mid: 4, treble: 2 },
+            treble: { label: 'Treble', bass: 0, mid: 1, treble: 5 },
+            night: { label: 'Night', bass: 2, mid: 1, treble: -4 }
+        };
+        function getEqualizerPreset() { try { const value = String(localStorage.getItem(EQ_SETTINGS_KEY) || 'flat'); return EQUALIZER_PRESETS[value] ? value : 'flat'; } catch { return 'flat'; } }
+        function saveEqualizerPreset(value) { try { localStorage.setItem(EQ_SETTINGS_KEY, EQUALIZER_PRESETS[value] ? value : 'flat'); } catch {} }
         function getAudioContext() {
             const Context = window.AudioContext || window.webkitAudioContext;
             if (!Context) return null;
@@ -1825,9 +1837,12 @@
             try {
                 if (!media.currentSrc && !media.src) media.crossOrigin = 'anonymous';
                 const source = context.createMediaElementSource(media);
+                const bass = context.createBiquadFilter(); bass.type = 'lowshelf'; bass.frequency.value = 180;
+                const mid = context.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = 1000; mid.Q.value = 1;
+                const treble = context.createBiquadFilter(); treble.type = 'highshelf'; treble.frequency.value = 4000;
                 const gain = context.createGain();
-                source.connect(gain); gain.connect(context.destination);
-                const graph = { context, source, gain };
+                source.connect(bass); bass.connect(mid); mid.connect(treble); treble.connect(gain); gain.connect(context.destination);
+                const graph = { context, source, bass, mid, treble, gain };
                 mediaAudioGraphs.set(media, graph);
                 return graph;
             } catch (error) {
@@ -1838,13 +1853,17 @@
         function applyVolumeSettings(media, activateBoost = false) {
             if (!media) return;
             const settings = getVolumeSettings();
+            const presetName = getEqualizerPreset();
+            const preset = EQUALIZER_PRESETS[presetName];
             media.volume = settings.volume;
             const select = document.getElementById('volume-boost');
+            const equalizer = document.getElementById('equalizer-preset');
             const slider = document.getElementById('playback-volume');
             if (slider) slider.value = String(settings.volume);
             if (select) select.value = String(settings.boost);
-            const graph = settings.boost > 1 || activateBoost ? ensureMediaAudioGraph(media) : mediaAudioGraphs.get(media);
-            if (graph) { graph.gain.gain.value = settings.boost; graph.context.resume().catch(() => {}); }
+            if (equalizer) equalizer.value = presetName;
+            const graph = settings.boost > 1 || presetName !== 'flat' || activateBoost ? ensureMediaAudioGraph(media) : mediaAudioGraphs.get(media);
+            if (graph) { graph.gain.gain.value = settings.boost; graph.bass.gain.value = preset.bass; graph.mid.gain.value = preset.mid; graph.treble.gain.value = preset.treble; graph.context.resume().catch(() => {}); }
             const value = document.getElementById('playback-volume-value');
             if (value) value.textContent = `${Math.round(settings.volume * 100)}%`;
         }
@@ -1866,11 +1885,23 @@
             if (!graph) { document.getElementById('volume-boost').value = '1'; settings.boost = 1; saveVolumeSettings(settings); return showToast('BOOSTER IS NOT AVAILABLE FOR THIS SOURCE OR BROWSER'); }
             graph.gain.gain.value = boost; graph.context.resume().catch(() => {}); showToast(`VOLUME BOOST ${Math.round(boost * 100)}%`);
         }
+        function setEqualizerPreset(value) {
+            const presetName = EQUALIZER_PRESETS[value] ? value : 'flat';
+            saveEqualizerPreset(presetName);
+            const media = getActiveNativeMedia();
+            const equalizer = document.getElementById('equalizer-preset'); if (equalizer) equalizer.value = presetName;
+            if (!media) return showToast(`EQUALIZER ${EQUALIZER_PRESETS[presetName].label.toUpperCase()} READY`);
+            const graph = ensureMediaAudioGraph(media);
+            if (!graph) { if (equalizer) equalizer.value = 'flat'; saveEqualizerPreset('flat'); return showToast('EQUALIZER IS NOT AVAILABLE FOR THIS SOURCE OR BROWSER'); }
+            const preset = EQUALIZER_PRESETS[presetName]; graph.bass.gain.value = preset.bass; graph.mid.gain.value = preset.mid; graph.treble.gain.value = preset.treble; graph.context.resume().catch(() => {});
+            showToast(`EQUALIZER ${preset.label.toUpperCase()}`);
+        }
         function resetPlaybackSettings() {
-            savePlaybackRate(1); saveVolumeSettings({ volume: 1, boost: 1 });
-            const media = getActiveNativeMedia(); if (media) { media.volume = 1; const graph = mediaAudioGraphs.get(media); if (graph) graph.gain.gain.value = 1; }
+            savePlaybackRate(1); saveVolumeSettings({ volume: 1, boost: 1 }); saveEqualizerPreset('flat');
+            const media = getActiveNativeMedia(); if (media) { media.volume = 1; const graph = mediaAudioGraphs.get(media); if (graph) { graph.gain.gain.value = 1; graph.bass.gain.value = 0; graph.mid.gain.value = 0; graph.treble.gain.value = 0; } }
             const speed = document.getElementById('playback-speed'); if (speed) speed.value = '1';
             const boost = document.getElementById('volume-boost'); if (boost) boost.value = '1';
+            const equalizer = document.getElementById('equalizer-preset'); if (equalizer) equalizer.value = 'flat';
             const slider = document.getElementById('playback-volume'); if (slider) slider.value = '1';
             const value = document.getElementById('playback-volume-value'); if (value) value.textContent = '100%';
             showToast('AUDIO SETTINGS RESET');
