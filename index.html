@@ -1264,6 +1264,7 @@
                 <div style="display: flex; gap: 8px;">
                     <button class="btn btn-primary" style="padding: 12px 20px;" onclick="handlePastePlay()">▶️ PLAY</button>
                     <button class="btn" style="border-color:#ff8c00; color:#ff8c00; padding:12px 15px;" onclick="handlePasteDownload()">⬇ DOWNLOAD</button>
+                    <button class="btn" style="border-color:#ff3131; color:#ff8c00; padding:12px 15px;" onclick="handleYouTubeOfficialDownload()">▶ YOUTUBE DOWNLOAD</button>
                 </div>
             </div>
 
@@ -1282,6 +1283,7 @@
                     <button class="btn" style="border-color: #ff8c00; color: #ff8c00;" onclick="handleAdminLogin()">⚙️ ADMIN</button>
                     <button id="vip-btn" class="btn" onclick="activateVIP()">👑 VIP PORTAL</button>
                     <button class="btn" style="border-color: #00f3ff; color: #00f3ff;" onclick="downloadCurrentMedia()">⬇ DOWNLOAD</button>
+                    <button class="btn" style="border-color: #ff3131; color: #ff8c00;" onclick="handleYouTubeOfficialDownload()">▶ YOUTUBE DOWNLOAD</button>
                     <button id="install-app-btn" class="btn" onclick="installApp()">📥 INSTALL APP</button>
                 </div>
             </div>
@@ -2420,7 +2422,7 @@
         async function downloadMedia(rawUrl, filename = 'streamhd-media') {
             const url = safeWebUrl(rawUrl);
             if (!url) { showToast('PASTE A VALID MEDIA URL FIRST'); return false; }
-            if (youtubeTarget(url)) { showToast('EMBEDDED VIDEO DOWNLOAD IS NOT AVAILABLE'); return false; }
+            if (youtubeTarget(url)) return handleYouTubeOfficialDownload(url);
             if (mediaKind(url) === 'hls') { showToast('LIVE HLS STREAMS CANNOT BE DOWNLOADED AS A FILE'); return false; }
             try {
                 showToast('PREPARING DOWNLOAD...');
@@ -2443,6 +2445,19 @@
             const url = document.getElementById('paste-link-input').value.trim();
             if (!url) return showToast('PASTE A MEDIA URL FIRST');
             downloadMedia(url, 'streamhd-download');
+        }
+        function handleYouTubeOfficialDownload(rawUrl = '') {
+            const candidate = String(rawUrl || document.getElementById('paste-link-input')?.value || activePlaybackSource || '').trim();
+            const safe = safeWebUrl(candidate);
+            const target = safe ? youtubeTarget(safe) : null;
+            if (!target || !target.id) { showToast('PASTE OR PLAY A YOUTUBE VIDEO FIRST'); return false; }
+            const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(target.id)}`;
+            window.open(watchUrl, '_blank', 'noopener,noreferrer');
+            setPlayerStatus('YouTube download is handled by YouTube. Use its official Download or Save offline control on the opened video page.', [
+                { label: 'OPEN YOUTUBE', href: watchUrl }
+            ]);
+            showToast('OPENED YOUTUBE OFFICIAL DOWNLOAD PAGE');
+            return true;
         }
 
 
