@@ -533,6 +533,11 @@
             gap: 15px; 
             align-content: start; 
         }
+        #recent-summary { display:none; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:-5px 0 14px; color:#9c9c9c; font:600 .68rem/1.4 'Source Code Pro',monospace; }
+        #recent-summary.show { display:flex; }
+        #recent-summary strong { color:#8fefff; font-weight:800; }
+        #recent-summary button { min-height:30px; padding:6px 10px; border:1px solid rgba(255,92,92,.65); border-radius:7px; background:transparent; color:#ff9a9a; font:700 .63rem 'Source Code Pro',monospace; cursor:pointer; }
+        #recent-summary button:hover,#recent-summary button:focus-visible { background:#ff5c5c; color:#180000; outline:2px solid #fff; outline-offset:2px; }
         .channel-card { 
             background: #000; 
             border: 1px solid rgba(255, 255, 255, 0.08); 
@@ -624,6 +629,7 @@
             display: block; 
             margin-bottom: 8px;
         }
+        .recent-time { display:block; color:#8fefff; font:700 .62rem 'Source Code Pro',monospace; letter-spacing:.2px; }
         .ch-badge { 
             position: absolute; 
             top: 8px; 
@@ -1307,6 +1313,7 @@
                     <button class="filter-btn" onclick="setFilter('sports', this)">⚽ SPORTS</button>
                 </div>
 
+                <div id="recent-summary" aria-live="polite"><span><strong>RECENTLY PLAYED</strong> <span id="recent-summary-count"></span></span><button type="button" onclick="clearRecentHistory()">CLEAR RECENT</button></div>
                 <div id="channel-list" class="channel-list"></div>
             </div>
         </aside>
@@ -1531,6 +1538,22 @@
         }
         let RECENT_WATCHED = readJsonStorage('nebula_recent', []);
         if (!Array.isArray(RECENT_WATCHED)) RECENT_WATCHED = [];
+        function recentItemKey(item) { return `${String(item?.name || '').trim().toLowerCase()}|${String(item?.type || '').trim().toLowerCase()}`; }
+        function normalizeRecentHistory(items) {
+            const seen = new Set();
+            return (Array.isArray(items) ? items : []).map((item, index) => {
+                if (!item || typeof item.name !== 'string') return null;
+                const canonical = CHANNELS.find(entry => recentItemKey(entry) === recentItemKey(item));
+                if (!canonical) return null;
+                const key = recentItemKey(canonical);
+                if (!key || seen.has(key)) return null;
+                seen.add(key);
+                const fallbackTime = Date.now() - (index * 1000);
+                return { ...canonical, watchedAt: Number(item.watchedAt || item.lastPlayedAt) || fallbackTime };
+            }).filter(Boolean).sort((a, b) => Number(b.watchedAt || 0) - Number(a.watchedAt || 0)).slice(0, 50);
+        }
+        RECENT_WATCHED = normalizeRecentHistory(RECENT_WATCHED);
+        try { localStorage.setItem('nebula_recent', JSON.stringify(RECENT_WATCHED)); } catch {}
         function getTmdbApiKey() { return (window.STREAMHD_CONFIG && window.STREAMHD_CONFIG.tmdbApiKey) || localStorage.getItem('streamhd_tmdb_api_key') || ''; }
         function apiErrorText(value, fallback = 'API request failed') {
             if (typeof value === 'string' && value.trim()) return value.trim();
@@ -3544,8 +3567,10 @@
             if (ch.reqVip && !isVIP) return showToast('VIP ACCESS REQUIRED');
             activeIdx = idx;
             if (safeWebUrl(ch.img)) document.getElementById('dynamic-bg').style.backgroundImage = `url("${safeWebUrl(ch.img)}")`;
-            RECENT_WATCHED = RECENT_WATCHED.filter(item => item && item.name !== ch.name);
-            RECENT_WATCHED.unshift(ch); if (RECENT_WATCHED.length > 6) RECENT_WATCHED.pop();
+            const playedKey = `${String(ch.name || '').trim().toLowerCase()}|${String(ch.type || '').trim().toLowerCase()}`;
+            RECENT_WATCHED = RECENT_WATCHED.filter(item => `${String(item?.name || '').trim().toLowerCase()}|${String(item?.type || '').trim().toLowerCase()}` !== playedKey);
+            RECENT_WATCHED.unshift({ ...ch, watchedAt: Date.now() });
+            RECENT_WATCHED = RECENT_WATCHED.slice(0, 50);
             try { localStorage.setItem('nebula_recent', JSON.stringify(RECENT_WATCHED)); } catch {}
             hideAllPlayers(); triggerLoader();
             let openedSource = true;
@@ -3614,9 +3639,32 @@
             renderChannels();
         }
 
+        function clearRecentHistory() {
+            RECENT_WATCHED = [];
+            try { localStorage.removeItem('nebula_recent'); } catch {}
+            renderChannels();
+            showToast('RECENT HISTORY CLEARED');
+        }
+        function formatRecentTime(value) {
+            const time = Number(value);
+            if (!Number.isFinite(time)) return 'Recently played';
+            const diff = Math.max(0, Date.now() - time);
+            const minutes = Math.floor(diff / 60000);
+            if (minutes < 1) return 'Just now';
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            return days < 7 ? `${days}d ago` : new Date(time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        }
+
         function renderChannels() {
             const list = document.getElementById('channel-list');
             const sourceArray = currentFilter === 'recent' ? RECENT_WATCHED : CHANNELS;
+            const recentSummary = document.getElementById('recent-summary');
+            const recentCount = document.getElementById('recent-summary-count');
+            recentSummary?.classList.toggle('show', currentFilter === 'recent');
+            if (recentCount) recentCount.textContent = `${RECENT_WATCHED.length} saved item${RECENT_WATCHED.length === 1 ? '' : 's'}`;
             const fragment = document.createDocumentFragment();
             let displayedCount = 0;
             sourceArray.forEach(ch => {
@@ -3636,11 +3684,13 @@
                 const badgeText = ({ movie:'🎬 MOVIE', tv:'📺 SERIES', livetv:'📡 LIVE', kenya:'📡 LIVE', game:'🎮 GAME', music:'🎵 MUSIC', audio:'🎧 AUDIO', video:'▶ VIDEO', hls:'📡 LIVE', sports:'⚽ SPORTS' })[ch.category] || '';
                 card.appendChild(img);
                 if (badgeText) { const badge = document.createElement('span'); badge.className = 'ch-badge'; badge.textContent = badgeText; card.appendChild(badge); }
-                const info = document.createElement('span'); info.className = 'card-info'; const name = document.createElement('span'); name.className = 'ch-name'; name.textContent = ch.name || 'Untitled'; info.appendChild(name); card.appendChild(info);
+                const info = document.createElement('span'); info.className = 'card-info'; const name = document.createElement('span'); name.className = 'ch-name'; name.textContent = ch.name || 'Untitled'; info.appendChild(name);
+                if (currentFilter === 'recent') { const viewed = document.createElement('span'); viewed.className = 'recent-time'; viewed.textContent = formatRecentTime(ch.watchedAt); info.appendChild(viewed); }
+                card.appendChild(info);
                 fragment.appendChild(card);
             });
             list.replaceChildren(fragment);
-            if (!displayedCount) { const empty = document.createElement('p'); empty.style.cssText = 'grid-column:1/-1;text-align:center;padding:50px;color:#777'; empty.textContent = `No items found in ${currentFilter}.`; list.appendChild(empty); }
+            if (!displayedCount) { const empty = document.createElement('div'); empty.style.cssText = 'grid-column:1/-1;text-align:center;padding:42px 20px;color:#777'; empty.innerHTML = currentFilter === 'recent' ? '<strong style="display:block;color:#8fefff;font:800 .85rem Orbitron,sans-serif;margin-bottom:8px">NO RECENT MEDIA YET</strong><span style="font:600 .7rem Source Code Pro,monospace">Play a channel, movie, series, audio track, or video and it will appear here.</span>' : `<span style="font:600 .7rem Source Code Pro,monospace">No items found in ${currentFilter}.</span>`; list.appendChild(empty); }
             document.getElementById('ch-count').textContent = String(displayedCount);
         }
 
