@@ -406,6 +406,13 @@
         }
         #offline-banner.online { background: #176b3a; border-color: #35e889; }
         #offline-banner.show { display: block; }
+        #offline-card { display:none; position:relative; z-index:18; width:100%; box-sizing:border-box; margin:12px 0 0; padding:16px 18px; border:1px solid rgba(255,165,0,.55); border-left:4px solid #ffb000; border-radius:12px; background:linear-gradient(135deg,rgba(55,33,4,.96),rgba(18,13,4,.96)); color:#fff4d2; box-shadow:0 12px 30px rgba(0,0,0,.28); }
+        #offline-card.show { display:block; }
+        #offline-card strong { display:block; color:#ffd166; font:900 .85rem 'Orbitron',sans-serif; letter-spacing:.5px; }
+        #offline-card p { margin:6px 0 0; color:#eadfbe; font:600 .76rem/1.5 'Source Code Pro',monospace; }
+        .offline-card-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:11px; }
+        .offline-card-actions button { min-height:30px; padding:6px 10px; border:1px solid rgba(255,209,102,.7); border-radius:7px; background:transparent; color:#ffd166; font:800 .66rem 'Source Code Pro',monospace; cursor:pointer; }
+        .offline-card-actions button:hover,.offline-card-actions button:focus-visible { background:#ffd166; color:#160f00; outline:2px solid #fff; outline-offset:2px; }
 
         /* PASTE & PLAY SECTION */
         .paste-play-box {
@@ -1018,6 +1025,11 @@
     <div id="bg-glow"></div>
     <div id="toast">SYSTEM READY</div>
     <div id="offline-banner" role="status" aria-live="polite"></div>
+    <section id="offline-card" role="status" aria-live="polite" aria-label="Offline mode">
+        <strong>OFFLINE MODE — STREAM HD IS STILL READY</strong>
+        <p>Search, live streams, provider APIs, and online subtitles need an internet connection. The installed app shell, saved playlists, cached pages, and locally stored media remain available.</p>
+        <div class="offline-card-actions"><button type="button" onclick="retryNetworkServices()">↻ RETRY CONNECTION</button><button type="button" onclick="dismissOfflineCard()">DISMISS</button></div>
+    </section>
 
     <div id="whatsapp-channel-popup" class="overlay-screen" role="dialog" aria-modal="true" aria-labelledby="whatsapp-channel-title">
         <div class="channel-popup" onclick="event.stopPropagation()">
@@ -1329,16 +1341,33 @@
 
         function updateNetworkStatus() {
             const banner = document.getElementById('offline-banner');
+            const card = document.getElementById('offline-card');
             if (!banner) return;
             if (navigator.onLine) {
                 banner.textContent = 'ONLINE — STREAM HD SERVICES AVAILABLE';
                 banner.classList.add('online', 'show');
+                card?.classList.remove('show');
                 setTimeout(() => { if (navigator.onLine) banner.classList.remove('show'); }, 2200);
             } else {
                 banner.textContent = 'OFFLINE — SAVED APP SHELL AND LOCAL MEDIA ARE AVAILABLE; ONLINE STREAMS AND SEARCH NEED INTERNET';
                 banner.classList.remove('online'); banner.classList.add('show');
+                card?.classList.add('show');
                 showToast('OFFLINE MODE');
             }
+        }
+        function dismissOfflineCard() { document.getElementById('offline-card')?.classList.remove('show'); }
+        async function retryNetworkServices() {
+            if (!navigator.onLine) { showToast('STILL OFFLINE — CHECK WI-FI OR MOBILE DATA'); return; }
+            updateNetworkStatus();
+            try { await fetch(`${location.origin}/?network-check=${Date.now()}`, { cache: 'no-store', headers: { Accept: 'text/html' } }); showToast('CONNECTION RESTORED — SERVICES READY'); }
+            catch { showToast('CONNECTION IS UNSTABLE — TRY AGAIN'); }
+        }
+        function apiUnavailableMessage(provider, error, fallback = 'The service is temporarily unavailable.') {
+            const text = String(error?.message || error || '').toLowerCase();
+            if (!navigator.onLine || error?.name === 'TypeError' || /failed to fetch|network|offline|timeout|timed out/.test(text)) return `${provider} is unavailable offline. Reconnect to search or play online content.`;
+            if (/not configured|missing|api_key|credentials/.test(text)) return `${provider} is not configured yet. The site owner must add the provider credentials.`;
+            if (/401|403|access denied|blocked|forbidden|quota|rate.?limit/.test(text)) return `${provider} is temporarily restricted by its provider. Try again later or use another source.`;
+            return `${provider} is currently unavailable. ${fallback} Try again shortly.`;
         }
         window.addEventListener('online', updateNetworkStatus);
         window.addEventListener('offline', updateNetworkStatus);
@@ -2992,7 +3021,7 @@
                 document.getElementById('search-status').innerText = results.length ? `FOUND ${results.length} OFFICIAL YOUTUBE ${searchMode === 'youtube-audio' ? 'AUDIO' : 'VIDEOS'}` : 'NO YOUTUBE RESULTS FOUND';
             } catch (error) {
                 resBox.innerHTML = '<p style="padding:30px;color:#777">YouTube search is temporarily unavailable. Check the API key and quota.</p>';
-                document.getElementById('search-status').innerText = error.message === 'YOUTUBE_API_KEY is not configured' ? 'ADD YOUTUBE_API_KEY IN VERCEL TO SEARCH YOUTUBE' : `YOUTUBE SEARCH FAILED: ${apiErrorText(error.message)}`;
+                document.getElementById('search-status').innerText = apiUnavailableMessage('YouTube search', error, 'Check the API quota or try another search.');
             }
         }
 
@@ -3127,8 +3156,8 @@
                 document.getElementById('search-status').innerText = results.length ? `FOUND ${results.length} INTERNET ARCHIVE FILMS` : 'NO ARCHIVE FILMS FOUND — TRY ANOTHER TITLE';
                 renderArchiveResults(results);
             } catch (error) {
-                document.getElementById('search-status').innerText = `INTERNET ARCHIVE SEARCH FAILED: ${apiErrorText(error.message, 'TRY AGAIN')}`;
-                resBox.innerHTML = '<p style="padding:30px;color:#777">Archive search is temporarily unavailable.</p>';
+                document.getElementById('search-status').innerText = apiUnavailableMessage('Archive search', error, 'Try another title.');
+                resBox.innerHTML = `<p style="padding:30px;color:#777">${apiUnavailableMessage('Internet Archive search', error, 'Try again shortly.')}</p>`;
             }
         }
 
@@ -3171,8 +3200,8 @@
                 document.getElementById('search-status').innerText = items.length ? `FOUND ${items.length} YOCINEMA TITLES` : 'NO YOCINEMA TITLES FOUND';
                 renderYocinemaResults(items);
             } catch (error) {
-                document.getElementById('search-status').innerText = error.message === 'YOCINEMA_API_KEY is not configured' ? 'YOCINEMA IS NOT CONFIGURED — ADD YOCINEMA_API_KEY IN VERCEL' : `YOCINEMA SEARCH FAILED: ${apiErrorText(error.message)}`;
-                resBox.innerHTML = '<p style="padding:30px;color:#777">YOCINEMA is temporarily unavailable.</p>';
+                document.getElementById('search-status').innerText = apiUnavailableMessage('Yocinema', error, 'Try again shortly.');
+                resBox.innerHTML = `<p style="padding:30px;color:#777">${apiUnavailableMessage('Yocinema', error)}</p>`;
             }
         }
 
@@ -3184,8 +3213,8 @@
                 document.getElementById('search-status').innerText = items.length ? `FOUND ${items.length} AUTHORIZED ${type === 'tv' ? 'SERIES' : 'MOVIES'}` : 'NO AUTHORIZED TITLES FOUND';
                 renderMovieApiResults(items, type);
             } catch (error) {
-                document.getElementById('search-status').innerText = `MOVIE API SEARCH FAILED: ${apiErrorText(error.message)}`;
-                resBox.innerHTML = '<p style="padding:30px;color:#777">The authorized Movie API is temporarily unavailable.</p>';
+                document.getElementById('search-status').innerText = apiUnavailableMessage('Movie search', error, 'Try again or use the saved catalog.');
+                resBox.innerHTML = `<p style="padding:30px;color:#777">${apiUnavailableMessage('Movie API', error, 'The saved catalog may still be available.')}</p>`;
             }
         }
 
