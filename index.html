@@ -1851,22 +1851,47 @@
         }
         function clearSuggestionQueue() { suggestionQueue = []; renderSuggestionQueue(); }
         function youtubeTitleIsLyric(title) { return /\blyric(?:s| video)?\b|official lyrics|lyric video/i.test(String(title || '')); }
+        function getYouTubeRegion() {
+            try {
+                const saved = String(localStorage.getItem('streamhd_region') || '').trim().toUpperCase();
+                if (/^[A-Z]{2}$/.test(saved)) return saved;
+            } catch {}
+            const language = String(navigator.language || '').toUpperCase();
+            const languageRegion = language.match(/[-_]([A-Z]{2})$/)?.[1];
+            if (languageRegion) return languageRegion;
+            const timezone = String(Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+            if (/Nairobi|Kampala|Dar_Es_Salaam|Addis_Ababa|Africa\/(?:Lusaka|Harare|Maputo)/i.test(timezone)) return timezone.includes('Nairobi') ? 'KE' : 'UG';
+            return 'KE';
+        }
+        function getYouTubeRegionLabel(region = getYouTubeRegion()) {
+            return ({ KE: 'Kenya', UG: 'Uganda', TZ: 'Tanzania', RW: 'Rwanda', ET: 'Ethiopia', ZA: 'South Africa', NG: 'Nigeria', GH: 'Ghana' })[region] || region;
+        }
+        function youtubeRegionalScore(entry, region = getYouTubeRegion()) {
+            const text = `${entry.title} ${entry.channel} ${entry.item?.snippet?.description || ''}`.toLowerCase();
+            const label = getYouTubeRegionLabel(region).toLowerCase();
+            const aliases = region === 'KE' ? ['kenya', 'kenyan', 'nairobi', 'mombasa'] : [label];
+            return aliases.reduce((score, token) => score + (text.includes(token) ? 1 : 0), 0);
+        }
         function randomizeYouTubeQueue(results, currentId, audioMode) {
             const candidates = results.map((item, index) => {
                 const id = String(item?.id?.videoId || '').trim();
                 const title = String(item?.snippet?.title || 'YouTube video').replace(/<[^>]+>/g, '');
                 const channel = String(item?.snippet?.channelTitle || 'Official YouTube channel');
-                return { item, index, id, title, channel, lyric: youtubeTitleIsLyric(title) };
+                return { item, index, id, title, channel, lyric: youtubeTitleIsLyric(title), regionalScore: youtubeRegionalScore({ item, title, channel }) };
             }).filter(entry => entry.id && entry.id !== currentId);
             const queue = [];
             let lastChannel = '';
             let lastLyric = false;
             while (candidates.length && queue.length < 24) {
                 const compatible = candidates.filter(entry => entry.channel !== lastChannel && (!lastLyric || !entry.lyric));
-                const pool = (compatible.length ? compatible : candidates).slice(0, Math.min(6, candidates.length));
+                const eligible = compatible.length ? compatible : candidates;
+                const bestRegionalScore = Math.max(...eligible.map(entry => entry.regionalScore));
+                const regionalPool = eligible.filter(entry => entry.regionalScore === bestRegionalScore);
+                const pool = regionalPool.slice(0, Math.min(6, regionalPool.length));
                 const chosen = pool[Math.floor(Math.random() * pool.length)];
                 candidates.splice(candidates.indexOf(chosen), 1);
-                const meta = `${audioMode ? 'OFFICIAL AUDIO VIDEO' : 'OFFICIAL VIDEO'} · ${chosen.channel}${chosen.lyric ? ' · LYRIC' : ''}`;
+                const regionalLabel = chosen.regionalScore > 0 ? ` · ${getYouTubeRegionLabel()} REGION` : '';
+                const meta = `${audioMode ? 'OFFICIAL AUDIO VIDEO' : 'OFFICIAL VIDEO'} · ${chosen.channel}${regionalLabel}${chosen.lyric ? ' · LYRIC' : ''}`;
                 queue.push({ title: chosen.title, meta, play: () => playYouTubeResult(chosen.id, chosen.title, audioMode) });
                 lastChannel = chosen.channel;
                 lastLyric = chosen.lyric;
@@ -3050,13 +3075,15 @@
 
         async function fetchYouTubeVideoResults(query) {
             const term = String(query || '').trim();
+            const region = getYouTubeRegion();
+            const regionLabel = getYouTubeRegionLabel(region);
             const searchTerm = searchMode === 'youtube-audio' ? `${term} official audio` : term;
             const resBox = document.getElementById('api-results');
             try {
-                const data = await youtubeApiFetch(searchTerm || 'official videos', { mode: 'video', maxResults: 25 });
+                const data = await youtubeApiFetch(searchTerm || `${regionLabel} official videos`, { mode: 'video', maxResults: 25, regionCode: region, relevanceLanguage: String(navigator.language || '').split('-')[0] || 'en' });
                 const results = (data.items || []).filter(item => item && item.id && item.id.videoId && item.snippet);
                 renderYouTubeVideoResults(results, searchMode === 'youtube-audio');
-                document.getElementById('search-status').innerText = results.length ? `FOUND ${results.length} OFFICIAL YOUTUBE ${searchMode === 'youtube-audio' ? 'AUDIO' : 'VIDEOS'}` : 'NO YOUTUBE RESULTS FOUND';
+                document.getElementById('search-status').innerText = results.length ? `FOUND ${results.length} OFFICIAL ${regionLabel.toUpperCase()}-FIRST YOUTUBE ${searchMode === 'youtube-audio' ? 'AUDIO' : 'VIDEOS'}` : `NO ${regionLabel.toUpperCase()} YOUTUBE RESULTS FOUND — TRY ANOTHER SEARCH`;
             } catch (error) {
                 resBox.innerHTML = '<p style="padding:30px;color:#777">YouTube search is temporarily unavailable. Check the API key and quota.</p>';
                 document.getElementById('search-status').innerText = apiUnavailableMessage('YouTube search', error, 'Check the API quota or try another search.');
