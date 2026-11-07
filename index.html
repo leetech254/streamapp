@@ -1823,7 +1823,7 @@
             const context = getAudioContext();
             if (!context) return null;
             try {
-                media.crossOrigin = media.crossOrigin || 'anonymous';
+                if (!media.currentSrc && !media.src) media.crossOrigin = 'anonymous';
                 const source = context.createMediaElementSource(media);
                 const gain = context.createGain();
                 source.connect(gain); gain.connect(context.destination);
