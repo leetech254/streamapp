@@ -226,6 +226,10 @@
         .playback-dock button, .playback-dock select { min-height:34px; border:1px solid rgba(255,215,0,.38); border-radius:8px; background:#0b0b0b; color:#eee; padding:6px 10px; font:700 .68rem 'Source Code Pro',monospace; cursor:pointer; }
         .playback-dock button:hover, .playback-dock button:focus-visible, .playback-dock select:focus-visible { color:#050505; background:var(--primary); outline:2px solid #fff; outline-offset:2px; }
         .playback-dock .playback-time { min-width:92px; color:#8fefff; font:600 .68rem 'Source Code Pro',monospace; text-align:center; }
+        .volume-control { display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:0 7px; border:1px solid rgba(0,243,255,.2); border-radius:8px; color:#8fefff; font:700 .65rem 'Source Code Pro',monospace; }
+        .volume-control input[type="range"] { width:82px; accent-color:var(--primary); }
+        .volume-control select { min-height:28px; padding:4px 6px; font-size:.62rem; }
+        @media (max-width:700px) { .volume-control { flex:1 1 100%; justify-content:center; } .volume-control input[type="range"] { width:min(46vw,150px); } }
         @media (max-width:700px) { .playback-dock { gap:5px; padding:7px 4px; } .playback-dock button,.playback-dock select { padding:6px 7px; font-size:.61rem; } .playback-dock .playback-time { min-width:78px; } }
         .media-tools { display:flex; gap:7px; flex-wrap:wrap; align-items:center; width:100%; margin-top:8px; }
         .media-tools input, .media-tools select { flex:1 1 180px; min-width:0; min-height:34px; box-sizing:border-box; border:1px solid rgba(255,215,0,.28); border-radius:8px; background:#050505; color:#eee; padding:7px 10px; font:600 .68rem 'Source Code Pro',monospace; }
@@ -1240,12 +1244,15 @@
                 <button id="playback-toggle" type="button" onclick="togglePlayback()" aria-label="Play or pause" aria-keyshortcuts="Space K">▶ PLAY</button>
                 <button type="button" onclick="seekPlayback(30)" aria-label="Seek forward 30 seconds" aria-keyshortcuts="ArrowRight">30s ↷</button>
                 <span id="playback-time" class="playback-time">0:00 / 0:00</span>
+                <label class="volume-control" title="Native media volume"><span aria-hidden="true">🔊</span><input id="playback-volume" type="range" min="0" max="1" step="0.01" value="1" oninput="setPlaybackVolume(this.value)" aria-label="Playback volume"><span id="playback-volume-value">100%</span></label>
+                <label class="volume-control" title="Boost native audio and video"><span>BOOST</span><select id="volume-boost" onchange="setVolumeBoost(this.value)" aria-label="Volume booster"><option value="1">OFF</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></label>
                 <select id="playback-speed" onchange="setPlaybackRate(this.value)" aria-label="Playback speed">
                     <option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
                 </select>
                 <button id="pip-toggle" type="button" onclick="togglePiP()" aria-label="Enter picture in picture" aria-keyshortcuts="P">▣ PiP</button>
                 <button type="button" onclick="fullscreenPlayback()" aria-label="Fullscreen playback" aria-keyshortcuts="F">⛶</button>
                 <button type="button" onclick="sharePlayback()" aria-label="Share current media">↗ SHARE</button>
+                <button type="button" onclick="resetPlaybackSettings()" aria-label="Reset playback volume and speed">↺ RESET AUDIO</button>
             </div>
             <div class="media-tools" aria-label="Subtitle and playlist tools">
                 <input id="subtitle-url" type="url" placeholder="Subtitle VTT URL (native video)" aria-label="Subtitle VTT URL">
@@ -1793,6 +1800,81 @@
         customPlaylist = customPlaylist.filter(item => item && typeof item.url === 'string' && safeWebUrl(item.url)).slice(0, 50);
         const PLAYBACK_STATE_KEY = 'streamhd_last_playback';
         const PLAYBACK_RATE_KEY = 'streamhd_playback_rate';
+        const VOLUME_SETTINGS_KEY = 'streamhd_volume_settings_v1';
+        let audioContext = null;
+        const mediaAudioGraphs = new WeakMap();
+        function getVolumeSettings() {
+            const saved = readJsonStorage(VOLUME_SETTINGS_KEY, {});
+            const volume = Number(saved?.volume);
+            const boost = Number(saved?.boost);
+            return { volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1, boost: [1, 1.25, 1.5, 2].includes(boost) ? boost : 1 };
+        }
+        function saveVolumeSettings(settings) { try { localStorage.setItem(VOLUME_SETTINGS_KEY, JSON.stringify(settings)); } catch {} }
+        function getAudioContext() {
+            const Context = window.AudioContext || window.webkitAudioContext;
+            if (!Context) return null;
+            if (!audioContext) audioContext = new Context();
+            return audioContext;
+        }
+        function ensureMediaAudioGraph(media) {
+            if (!media) return null;
+            const existing = mediaAudioGraphs.get(media);
+            if (existing) return existing;
+            const context = getAudioContext();
+            if (!context) return null;
+            try {
+                media.crossOrigin = media.crossOrigin || 'anonymous';
+                const source = context.createMediaElementSource(media);
+                const gain = context.createGain();
+                source.connect(gain); gain.connect(context.destination);
+                const graph = { context, source, gain };
+                mediaAudioGraphs.set(media, graph);
+                return graph;
+            } catch (error) {
+                console.warn('Volume booster unavailable for this media source', error);
+                return null;
+            }
+        }
+        function applyVolumeSettings(media, activateBoost = false) {
+            if (!media) return;
+            const settings = getVolumeSettings();
+            media.volume = settings.volume;
+            const select = document.getElementById('volume-boost');
+            const slider = document.getElementById('playback-volume');
+            if (slider) slider.value = String(settings.volume);
+            if (select) select.value = String(settings.boost);
+            const graph = settings.boost > 1 || activateBoost ? ensureMediaAudioGraph(media) : mediaAudioGraphs.get(media);
+            if (graph) { graph.gain.gain.value = settings.boost; graph.context.resume().catch(() => {}); }
+            const value = document.getElementById('playback-volume-value');
+            if (value) value.textContent = `${Math.round(settings.volume * 100)}%`;
+        }
+        function setPlaybackVolume(value) {
+            const media = getActiveNativeMedia();
+            const volume = Math.max(0, Math.min(1, Number(value)));
+            if (!Number.isFinite(volume)) return;
+            const settings = getVolumeSettings(); settings.volume = volume; saveVolumeSettings(settings);
+            if (media) media.volume = volume;
+            const output = document.getElementById('playback-volume-value'); if (output) output.textContent = `${Math.round(volume * 100)}%`;
+        }
+        function setVolumeBoost(value) {
+            const media = getActiveNativeMedia();
+            const boost = [1, 1.25, 1.5, 2].includes(Number(value)) ? Number(value) : 1;
+            const settings = getVolumeSettings(); settings.boost = boost; saveVolumeSettings(settings);
+            if (!media) return showToast('START NATIVE AUDIO OR VIDEO TO USE THE BOOSTER');
+            if (boost <= 1) { const graph = mediaAudioGraphs.get(media); if (graph) graph.gain.gain.value = 1; showToast('VOLUME BOOST OFF'); return; }
+            const graph = ensureMediaAudioGraph(media);
+            if (!graph) { document.getElementById('volume-boost').value = '1'; settings.boost = 1; saveVolumeSettings(settings); return showToast('BOOSTER IS NOT AVAILABLE FOR THIS SOURCE OR BROWSER'); }
+            graph.gain.gain.value = boost; graph.context.resume().catch(() => {}); showToast(`VOLUME BOOST ${Math.round(boost * 100)}%`);
+        }
+        function resetPlaybackSettings() {
+            savePlaybackRate(1); saveVolumeSettings({ volume: 1, boost: 1 });
+            const media = getActiveNativeMedia(); if (media) { media.volume = 1; const graph = mediaAudioGraphs.get(media); if (graph) graph.gain.gain.value = 1; }
+            const speed = document.getElementById('playback-speed'); if (speed) speed.value = '1';
+            const boost = document.getElementById('volume-boost'); if (boost) boost.value = '1';
+            const slider = document.getElementById('playback-volume'); if (slider) slider.value = '1';
+            const value = document.getElementById('playback-volume-value'); if (value) value.textContent = '100%';
+            showToast('AUDIO SETTINGS RESET');
+        }
         function getPlaybackRate() {
             try { const rate = Number(localStorage.getItem(PLAYBACK_RATE_KEY)); return [0.75, 1, 1.25, 1.5, 2].includes(rate) ? rate : 1; } catch { return 1; }
         }
@@ -2047,6 +2129,7 @@
             updatePiPControl();
             dock.classList.toggle('active', Boolean(media));
             if (!media) return;
+            applyVolumeSettings(media);
             const toggle = document.getElementById('playback-toggle');
             if (toggle) { toggle.textContent = media.paused ? '▶ PLAY' : '❚❚ PAUSE'; toggle.setAttribute('aria-label', media.paused ? 'Play' : 'Pause'); }
             const time = document.getElementById('playback-time');
@@ -2137,7 +2220,7 @@
             media.addEventListener('pause', () => { persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
             media.addEventListener('playing', () => { setPlayerStatus(media.tagName === 'AUDIO' ? 'Audio playing' : 'Video playing'); updatePlaybackDock(); });
             media.addEventListener('timeupdate', () => { if (media.currentTime > 0) persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
-            media.addEventListener('loadedmetadata', () => { media.playbackRate = getPlaybackRate(); persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
+            media.addEventListener('loadedmetadata', () => { media.playbackRate = getPlaybackRate(); applyVolumeSettings(media); persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork); updatePlaybackDock(); });
             media.addEventListener('error', () => { setPlayerStatus(`${id === 'audio-player' ? 'Audio' : 'Video'} source failed to load.`, [{ label: '↻ RETRY', onClick: () => playDirectMedia(activePlaybackSource, activePlayerContext.title || 'Stream HD', activePlaybackKind || (id === 'audio-player' ? 'audio' : 'video')) }]); });
             media.addEventListener('ended', () => {
                 const source = activePlaybackSource;
@@ -2383,6 +2466,7 @@
             activePlaybackSource = url;
             activePlaybackKind = kind;
             video.playbackRate = getPlaybackRate();
+            if (getVolumeSettings().boost > 1) video.crossOrigin = 'anonymous';
             updateMediaSession({ title: activePlayerContext.title || 'Stream HD', artwork: activePlayerContext.artwork || '' });
             savePlaybackState({ url, title: activePlayerContext.title || 'Stream HD', artwork: activePlayerContext.artwork || '', kind, currentTime: 0 });
             if (activeHls) { activeHls.destroy(); activeHls = null; }
@@ -2430,6 +2514,7 @@
                 const audio = document.getElementById('audio-player');
                 activePlaybackSource = url;
                 audio.playbackRate = getPlaybackRate();
+                if (getVolumeSettings().boost > 1) audio.crossOrigin = 'anonymous';
                 audio.src = url; audio.style.display = 'block'; audio.load();
                 audio.onerror = () => setPlayerStatus('Audio source could not be loaded.', [{ label: '↻ RETRY', onClick: () => playDirectMedia(url, title, 'audio') }]);
                 updateMediaSession({ title });
