@@ -55,8 +55,6 @@
     }
     </script>
 
-    <script src="https://cdn.jsdelivr.net/npm/artplayer@5.4.0/dist/artplayer.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13"></script>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;600;700&family=Source+Code+Pro:wght@400;700&display=swap" rel="stylesheet">
 
     <style>
@@ -1432,7 +1430,7 @@
             overlay.addEventListener('click', function(e) { if (e.target === this) closeOverlay(this.id); });
         });
 
-        let art, activeIdx = 0;
+        let activeIdx = 0;
         let currentFilter = 'all';
         let searchMode = 'movie';
         const DEFAULT_PLAYER_SOURCES = [
@@ -1837,6 +1835,36 @@
         let activeYouTubeAudioMode = false;
         let activePlaylistIndex = -1;
         let playlistLaunchPending = false;
+        let hlsLibraryPromise = null;
+        let artplayerLibraryPromise = null;
+        let art = null;
+        function loadExternalScript(src, globalName) {
+            if (window[globalName]) return Promise.resolve(window[globalName]);
+            const existing = document.querySelector(`script[data-streamhd-library="${globalName}"]`);
+            if (existing) return new Promise((resolve, reject) => { existing.addEventListener('load', () => resolve(window[globalName])); existing.addEventListener('error', () => reject(new Error(`${globalName}_LOAD_FAILED`))); });
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src; script.async = true; script.dataset.streamhdLibrary = globalName;
+                script.onload = () => window[globalName] ? resolve(window[globalName]) : reject(new Error(`${globalName}_GLOBAL_MISSING`));
+                script.onerror = () => reject(new Error(`${globalName}_LOAD_FAILED`));
+                document.head.appendChild(script);
+            });
+        }
+        function loadHlsLibrary() {
+            if (!hlsLibraryPromise) hlsLibraryPromise = loadExternalScript('https://cdn.jsdelivr.net/npm/hls.js@1.6.13', 'Hls').catch(error => { hlsLibraryPromise = null; throw error; });
+            return hlsLibraryPromise;
+        }
+        function loadArtplayerLibrary() {
+            if (!artplayerLibraryPromise) artplayerLibraryPromise = loadExternalScript('https://cdn.jsdelivr.net/npm/artplayer@5.4.0/dist/artplayer.js', 'Artplayer').catch(error => { artplayerLibraryPromise = null; throw error; });
+            return artplayerLibraryPromise;
+        }
+        async function ensureArtPlayer() {
+            if (art) return art;
+            await loadArtplayerLibrary();
+            art = new Artplayer({ container: '#player', url: '', type: 'm3u8', theme: selectedThemeColor || '#ffd700', isLive: true, fullscreen: true, pip: true, hotkey: true, setting: true });
+            art.on('error', err => { console.error('Player error:', err); setPlayerStatus('Playback failed. Check the URL, media format, CORS policy, and device codec support.'); showToast('PLAYBACK ERROR — CHECK THE SOURCE URL AND DEVICE SUPPORT'); });
+            return art;
+        }
         let suggestionQueue = [];
         const AUTOPLAY_SUGGESTIONS_KEY = 'streamhd_autoplay_suggestions_v1';
         let autoplaySuggestions = readJsonStorage(AUTOPLAY_SUGGESTIONS_KEY, true) !== false;
@@ -2343,41 +2371,6 @@
             if (media) persistMediaState(media, activePlayerContext.title, activePlayerContext.artwork);
         });
 
-        art = new Artplayer({
-            container: '#player',
-            url: '',
-            type: 'm3u8',
-            theme: '#ffd700',
-            isLive: true,
-            fullscreen: true,
-            pip: true,
-            hotkey: true,
-            setting: true,
-            customType: { m3u8: (video, url) => {
-                if (activeHls) { activeHls.destroy(); activeHls = null; }
-                if (Hls.isSupported()) {
-                    activeHls = new Hls({ enableWorker: true, backBufferLength: 30 });
-                    activeHls.loadSource(url); activeHls.attachMedia(video);
-                    activeHls.on(Hls.Events.ERROR, (_event, data) => {
-                        if (!data.fatal) return;
-                        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) activeHls.startLoad();
-                        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) activeHls.recoverMediaError();
-                        else { activeHls.destroy(); activeHls = null; showToast('HLS PLAYBACK IS NOT SUPPORTED OR THE STREAM IS UNAVAILABLE'); }
-                    });
-                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                    video.src = url; // Native HLS path for Safari, iPhone/iPad, and Apple TV browsers.
-                } else {
-                    showToast('THIS DEVICE DOES NOT SUPPORT HLS PLAYBACK');
-                }
-            } }
-        });
-
-        art.on('error', (err) => {
-            console.error('Player error:', err);
-            setPlayerStatus('Playback failed. Check the URL, media format, CORS policy, and device codec support.');
-            showToast('PLAYBACK ERROR — CHECK THE SOURCE URL AND DEVICE SUPPORT');
-        });
-
         // -------------------------
         // PASTE & PLAY ENGINE
         // -------------------------
@@ -2531,6 +2524,26 @@
             if (youtubePlayer && typeof youtubePlayer.stopVideo === 'function') { try { youtubePlayer.stopVideo(); } catch {} }
             else if (youtubeFrame) youtubeFrame.src = '';
         }
+        async function attachHlsPlayback(video, url) {
+            if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = url; video.load(); return true; }
+            try {
+                const HlsClass = await loadHlsLibrary();
+                if (activePlaybackSource !== url || video.style.display === 'none') return false;
+                if (!HlsClass.isSupported()) throw new Error('HLS_NOT_SUPPORTED');
+                activeHls = new HlsClass({ enableWorker: true, backBufferLength: 30 });
+                activeHls.loadSource(url); activeHls.attachMedia(video);
+                activeHls.on(HlsClass.Events.ERROR, (_event, data) => {
+                    if (!data.fatal) return;
+                    if (data.type === HlsClass.ErrorTypes.NETWORK_ERROR) activeHls.startLoad();
+                    else if (data.type === HlsClass.ErrorTypes.MEDIA_ERROR) activeHls.recoverMediaError();
+                    else { activeHls.destroy(); activeHls = null; setPlayerStatus('HLS playback is unavailable on this device or source.', [{ label: '↻ RETRY', onClick: () => playNativeVideo(url, 'hls') }]); }
+                });
+                return true;
+            } catch (error) {
+                setPlayerStatus('HLS playback could not load. Try again or use a direct MP4/WebM source.', [{ label: '↻ RETRY', onClick: () => playNativeVideo(url, 'hls') }]);
+                return false;
+            }
+        }
         function playNativeVideo(url, kind = 'video') {
             const video = document.getElementById('native-video');
             if (!video) return false;
@@ -2545,15 +2558,10 @@
             updateMediaSession({ title: activePlayerContext.title || 'Stream HD', artwork: activePlayerContext.artwork || '' });
             savePlaybackState({ url, title: activePlayerContext.title || 'Stream HD', artwork: activePlayerContext.artwork || '', kind, currentTime: 0 });
             if (activeHls) { activeHls.destroy(); activeHls = null; }
-            if (kind === 'hls' && window.Hls && Hls.isSupported()) {
-                activeHls = new Hls({ enableWorker: true, backBufferLength: 30 });
-                activeHls.loadSource(url); activeHls.attachMedia(video);
-                activeHls.on(Hls.Events.ERROR, (_event, data) => {
-                    if (!data.fatal) return;
-                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) activeHls.startLoad();
-                    else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) activeHls.recoverMediaError();
-                    else { activeHls.destroy(); activeHls = null; setPlayerStatus('HLS playback is unavailable on this device or source.', [{ label: '↻ RETRY', onClick: () => playNativeVideo(url, 'hls') }]); }
-                });
+            if (kind === 'hls') {
+                setPlayerStatus('Loading HLS playback engine…');
+                attachHlsPlayback(video, url).then(loaded => { if (loaded) playNativeVideoWhenReady(video, url, kind); });
+                return true;
             } else {
                 video.src = url; video.load();
             }
@@ -3673,7 +3681,9 @@
                 const audio = document.getElementById('audio-player'); activePlaybackSource = localObjectUrl; audio.src = localObjectUrl; audio.style.display = 'block'; audio.load();
                 audio.play().catch(() => setPlayerStatus('Audio is ready. Press Play to start.'));
             } else {
-                document.getElementById('player').style.display = 'block'; art.switchUrl(localObjectUrl);
+                activePlaybackSource = localObjectUrl;
+                document.getElementById('player').style.display = 'block';
+                ensureArtPlayer().then(player => { if (activePlaybackSource === localObjectUrl) player.switchUrl(localObjectUrl); }).catch(() => playNativeVideo(localObjectUrl, 'video'));
             }
             setPlayerStatus(kind === 'audio' ? 'Audio file playing' : 'Video file playing');
             updatePlaybackDock();
