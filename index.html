@@ -938,6 +938,9 @@
         .theme-dot:hover { 
             transform: scale(1.3); 
         }
+        .theme-dot.active { transform: scale(1.25); box-shadow: 0 0 0 2px #fff, 0 0 16px currentColor; }
+        .theme-state { color:#888; font:600 .58rem 'Source Code Pro',monospace; margin-top:3px; }
+        body.vip-mode .theme-state { color:#e9b4ff; }
 
         .custom-footer { 
             position: relative; 
@@ -1195,13 +1198,14 @@
                 <a href="https://chat.whatsapp.com/HyRgJzzjaVrI1ofiuKDHS2?s=cl&p=a&iam=2" target="_blank" rel="noopener noreferrer" class="whatsapp-badge">💬 JOIN COMMUNITY</a>
                 <div style="text-align:right">
                     <div id="clock" style="font-family:'Source Code Pro'; color:var(--primary); font-size: 1.3rem; font-weight: bold; transition: var(--transition); text-shadow: 0 0 10px rgba(0,0,0,0.5);">--:--:--</div>
-                    <div class="theme-selector">
-                        <div class="theme-dot" style="background:#ffd700;" onclick="changeTheme('#ffd700')"></div>
-                        <div class="theme-dot" style="background:#00f3ff;" onclick="changeTheme('#00f3ff')"></div>
-                        <div class="theme-dot" style="background:#00ff41;" onclick="changeTheme('#00ff41')"></div>
-                        <div class="theme-dot" style="background:#ff3131;" onclick="changeTheme('#ff3131')"></div>
-                        <div class="theme-dot" style="background:#bc13fe;" onclick="changeTheme('#bc13fe')"></div>
+                    <div class="theme-selector" aria-label="Theme selector">
+                        <div class="theme-dot" role="button" tabindex="0" data-theme-color="#ffd700" title="Gold theme" aria-label="Gold theme" style="background:#ffd700;" onclick="changeTheme('#ffd700')" onkeydown="if(event.key==='Enter'||event.key===' ')changeTheme('#ffd700')"></div>
+                        <div class="theme-dot" role="button" tabindex="0" data-theme-color="#00f3ff" title="Cyan theme" aria-label="Cyan theme" style="background:#00f3ff;" onclick="changeTheme('#00f3ff')" onkeydown="if(event.key==='Enter'||event.key===' ')changeTheme('#00f3ff')"></div>
+                        <div class="theme-dot" role="button" tabindex="0" data-theme-color="#00ff41" title="Green theme" aria-label="Green theme" style="background:#00ff41;" onclick="changeTheme('#00ff41')" onkeydown="if(event.key==='Enter'||event.key===' ')changeTheme('#00ff41')"></div>
+                        <div class="theme-dot" role="button" tabindex="0" data-theme-color="#ff3131" title="Red theme" aria-label="Red theme" style="background:#ff3131;" onclick="changeTheme('#ff3131')" onkeydown="if(event.key==='Enter'||event.key===' ')changeTheme('#ff3131')"></div>
+                        <div class="theme-dot" role="button" tabindex="0" data-theme-color="#bc13fe" title="Purple theme" aria-label="Purple theme" style="background:#bc13fe;" onclick="changeTheme('#bc13fe')" onkeydown="if(event.key==='Enter'||event.key===' ')changeTheme('#bc13fe')"></div>
                     </div>
+                    <div id="theme-state" class="theme-state" aria-live="polite">GOLD THEME</div>
                 </div>
             </div>
         </header>
@@ -1296,7 +1300,7 @@
 
                     <button class="btn" onclick="togglePiP()">📱 MINI PLAYER</button>
                     <button class="btn" style="border-color: #ff8c00; color: #ff8c00;" onclick="handleAdminLogin()">⚙️ ADMIN</button>
-                    <button id="vip-btn" class="btn" onclick="activateVIP()">👑 VIP PORTAL</button>
+                    <button id="vip-btn" class="btn" onclick="activateVIP()">👑 ENABLE VIP</button>
                     <button class="btn" style="border-color: #00f3ff; color: #00f3ff;" onclick="downloadCurrentMedia()">⬇ DOWNLOAD</button>
                     <button class="btn" style="border-color: #ff3131; color: #ff8c00;" onclick="handleYouTubeOfficialDownload()">▶ YOUTUBE DOWNLOAD</button>
                     <button id="install-app-btn" class="btn" onclick="installApp()">📥 INSTALL APP</button>
@@ -1545,6 +1549,46 @@
         function readJsonStorage(key, fallback) {
             try { const value = JSON.parse(localStorage.getItem(key)); return value ?? fallback; }
             catch (error) { console.warn(`Ignoring invalid local data for ${key}`, error); return fallback; }
+        }
+        const THEME_OPTIONS = {
+            '#ffd700': 'Gold', '#00f3ff': 'Cyan', '#00ff41': 'Green', '#ff3131': 'Red', '#bc13fe': 'Purple'
+        };
+        let selectedThemeColor = (() => {
+            const saved = String(localStorage.getItem('streamhd_theme_color') || '').toLowerCase();
+            return THEME_OPTIONS[saved] ? saved : '#ffd700';
+        })();
+        function applyVisualState() {
+            const color = selectedThemeColor;
+            document.documentElement.style.setProperty('--primary', color);
+            document.body.style.setProperty('--primary', color);
+            document.body.style.setProperty('--dark-bg', isVIP ? '#0a0012' : '#050505');
+            document.body.style.setProperty('--glass', isVIP ? 'rgba(20, 0, 30, 0.75)' : 'rgba(10, 10, 10, 0.75)');
+            document.body.classList.toggle('vip-mode', isVIP);
+            const glow = document.getElementById('bg-glow');
+            if (glow) glow.style.background = `radial-gradient(circle at 50% 30%, ${color}${isVIP ? '30' : '22'} 0%, transparent 60%)`;
+            const metaTheme = document.querySelector('meta[name="theme-color"]');
+            if (metaTheme) metaTheme.setAttribute('content', isVIP ? '#0a0012' : color);
+            document.querySelectorAll('.theme-dot').forEach(dot => dot.classList.toggle('active', dot.dataset.themeColor === color));
+            const state = document.getElementById('theme-state');
+            if (state) state.textContent = `${isVIP ? 'VIP · ' : ''}${THEME_OPTIONS[color].toUpperCase()} THEME`;
+            const vipButton = document.getElementById('vip-btn');
+            if (vipButton) { vipButton.textContent = isVIP ? '👑 DISABLE VIP' : '👑 ENABLE VIP'; vipButton.setAttribute('aria-pressed', String(isVIP)); vipButton.title = isVIP ? 'Disable VIP appearance' : 'Enable VIP appearance'; }
+            if (art) { try { art.theme = color; } catch {} }
+        }
+        function setVIPMode(enabled, announce = true) {
+            isVIP = Boolean(enabled);
+            try { localStorage.setItem('nebula_vip_status', String(isVIP)); } catch {}
+            applyVisualState();
+            if (typeof renderChannels === 'function') renderChannels();
+            if (announce) showToast(isVIP ? 'VIP MODE ENABLED' : 'VIP MODE DISABLED');
+        }
+        function changeTheme(color) {
+            const normalized = String(color || '').toLowerCase();
+            if (!THEME_OPTIONS[normalized]) return showToast('THEME IS NOT AVAILABLE');
+            selectedThemeColor = normalized;
+            try { localStorage.setItem('streamhd_theme_color', normalized); } catch {}
+            applyVisualState();
+            showToast(`${THEME_OPTIONS[normalized].toUpperCase()} THEME APPLIED`);
         }
         let RECENT_WATCHED = readJsonStorage('nebula_recent', []);
         if (!Array.isArray(RECENT_WATCHED)) RECENT_WATCHED = [];
@@ -2732,13 +2776,6 @@
             reader.readAsText(file);
         }
 
-        function changeTheme(color) {
-            document.documentElement.style.setProperty('--primary', color);
-            document.getElementById('bg-glow').style.background = `radial-gradient(circle at 50% 30%, ${color}22 0%, transparent 60%)`;
-            art.theme = color;
-            showToast("THEME APPLIED");
-        }
-
         function closeOverlay(id) { document.getElementById(id).style.display = 'none'; }
         function closeSearch() { closeOverlay('search-overlay'); }
 
@@ -3691,15 +3728,12 @@
         }
 
         function activateVIP() {
+            if (isVIP) return setVIPMode(false);
             const currentPass = localStorage.getItem('nebula_admin_pass');
             if (!currentPass) return showToast('SET A LOCAL ADMIN PASSWORD FIRST; THIS IS NOT SERVER ACCESS CONTROL');
             const entered = prompt('Enter this browser’s local admin password to switch VIP appearance:');
             if (currentPass && entered === currentPass) {
-                isVIP = true;
-                localStorage.setItem('nebula_vip_status', 'true');
-                document.body.classList.add('vip-mode');
-                showToast("👑 VIP PORTAL ACTIVATED!");
-                renderChannels();
+                setVIPMode(true);
             } else {
                 showToast("INVALID VIP KEY");
             }
@@ -3845,6 +3879,7 @@
             localStorage.removeItem('nebula_recent');
             localStorage.removeItem('nebula_vip_status');
             localStorage.removeItem('nebula_admin_pass');
+            localStorage.removeItem('streamhd_theme_color');
             localStorage.removeItem('streamhd_tmdb_api_key');
             showToast("DATABASE RESETTING...");
             setTimeout(() => location.reload(), 1000);
@@ -3887,9 +3922,7 @@
         });
         window.onload = async () => {
             await loadVercelPlayerConfig();
-            if(isVIP) {
-                document.body.classList.add('vip-mode');
-            }
+            applyVisualState();
             renderChannels();
             renderPlaylist();
             offerLastPlayback();
