@@ -1606,8 +1606,6 @@
                 return { ...canonical, watchedAt: Number(item.watchedAt || item.lastPlayedAt) || fallbackTime };
             }).filter(Boolean).sort((a, b) => Number(b.watchedAt || 0) - Number(a.watchedAt || 0)).slice(0, 50);
         }
-        RECENT_WATCHED = normalizeRecentHistory(RECENT_WATCHED);
-        try { localStorage.setItem('nebula_recent', JSON.stringify(RECENT_WATCHED)); } catch {}
         function getTmdbApiKey() { return (window.STREAMHD_CONFIG && window.STREAMHD_CONFIG.tmdbApiKey) || localStorage.getItem('streamhd_tmdb_api_key') || ''; }
         function apiErrorText(value, fallback = 'API request failed') {
             if (typeof value === 'string' && value.trim()) return value.trim();
@@ -1825,6 +1823,8 @@
         const customStored = validStoredChannels.filter(item => !defaultNames.has(item.name.toLowerCase()));
         let CHANNELS = [...mergedDefaults, ...customStored].slice(0, 500);
         try { localStorage.setItem('nebula_v44', JSON.stringify(CHANNELS)); } catch {}
+        RECENT_WATCHED = normalizeRecentHistory(RECENT_WATCHED);
+        try { localStorage.setItem('nebula_recent', JSON.stringify(RECENT_WATCHED)); } catch {}
 
         // Catalog metadata links to TMDB; playback uses user-supplied or authorized sources only.
         let activeHls = null;
@@ -3921,21 +3921,27 @@
             event.preventDefault(); cards[next].focus();
         });
         window.onload = async () => {
-            await loadVercelPlayerConfig();
-            applyVisualState();
-            renderChannels();
-            renderPlaylist();
-            offerLastPlayback();
-            consumeSharedMedia();
-
-            setTimeout(() => {
+            const hideSplash = () => {
                 const splash = document.getElementById('splash-screen');
-                if(splash) {
-                    splash.style.opacity = '0';
-                    setTimeout(() => splash.remove(), 500);
-                }
-            }, 2500);
-            maybeShowWhatsAppChannelPopup();
+                if (!splash) return;
+                splash.style.opacity = '0';
+                setTimeout(() => splash.remove(), 500);
+            };
+            try {
+                await Promise.race([loadVercelPlayerConfig(), new Promise(resolve => setTimeout(resolve, 4000))]);
+                applyVisualState();
+                renderChannels();
+                renderPlaylist();
+                offerLastPlayback();
+                consumeSharedMedia();
+                maybeShowWhatsAppChannelPopup();
+            } catch (error) {
+                console.error('Stream HD startup failed; continuing with safe defaults.', error);
+                document.getElementById('player-status')?.replaceChildren(document.createTextNode('Stream HD is ready. Choose a channel or paste a supported media link.'));
+                try { renderChannels(); } catch (fallbackError) { console.error('Library fallback failed.', fallbackError); }
+            } finally {
+                hideSplash();
+            }
         };
     </script>
 
