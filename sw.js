@@ -1,11 +1,16 @@
-const VERSION = 'v15';
+const VERSION = 'v16';
 const SHELL_CACHE = `stream-hd-shell-${VERSION}`;
 const MEDIA_CACHE = `stream-hd-media-${VERSION}`;
 const SUBTITLE_CACHE = `stream-hd-subtitles-${VERSION}`;
+const LIBRARY_CACHE = `stream-hd-libraries-${VERSION}`;
 const CACHE_PREFIX = 'stream-hd-';
 const MAX_MEDIA_ENTRIES = 12;
 const MAX_SUBTITLE_ENTRIES = 40;
 const MAX_CACHEABLE_MEDIA_BYTES = 250 * 1024 * 1024;
+const LAZY_LIBRARY_URLS = new Set([
+  'https://cdn.jsdelivr.net/npm/hls.js@1.6.13',
+  'https://cdn.jsdelivr.net/npm/artplayer@5.4.0/dist/artplayer.js'
+]);
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -31,7 +36,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter(key => key.startsWith(CACHE_PREFIX) && ![SHELL_CACHE, MEDIA_CACHE, SUBTITLE_CACHE].includes(key)).map(key => caches.delete(key)));
+    await Promise.all(keys.filter(key => key.startsWith(CACHE_PREFIX) && ![SHELL_CACHE, MEDIA_CACHE, SUBTITLE_CACHE, LIBRARY_CACHE].includes(key)).map(key => caches.delete(key)));
     await self.clients.claim();
   })());
 });
@@ -150,10 +155,26 @@ async function mediaFirst(request) {
   }
 }
 
+async function lazyLibraryFirst(request) {
+  const cache = await caches.open(LIBRARY_CACHE);
+  const cached = await cache.match(request);
+  try {
+    const response = await fetch(request);
+    if (response.ok || response.type === 'opaque') await cache.put(request, response.clone());
+    return response;
+  } catch {
+    return cached || offlineResponse('Playback engine is not cached for offline playback. Open the app online once to prepare HLS and local-video playback.');
+  }
+}
+
 self.addEventListener('fetch', event => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET') return;
+  if (LAZY_LIBRARY_URLS.has(url.href)) {
+    event.respondWith(lazyLibraryFirst(request));
+    return;
+  }
   const isMovieApiMedia = url.origin === self.location.origin && url.pathname === '/api/movieapi' && url.searchParams.get('action') === 'media';
   if (url.origin === self.location.origin && url.pathname.startsWith('/api/') && !isMovieApiMedia) return;
 
