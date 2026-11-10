@@ -2502,6 +2502,17 @@
             });
             return `https://www.youtube-nocookie.com/embed/${target}?${query.toString()}`;
         }
+        function youtubeWatchUrl(videoId) {
+            const id = String(videoId || '').trim();
+            return /^[A-Za-z0-9_-]{11}$/.test(id) ? `https://www.youtube.com/watch?v=${encodeURIComponent(id)}` : '';
+        }
+        function youtubeFallbackActions(videoId, retry) {
+            const watchUrl = youtubeWatchUrl(videoId);
+            const actions = [];
+            if (typeof retry === 'function') actions.push({ label: '↻ RETRY EMBED', onClick: retry });
+            if (watchUrl) actions.push({ label: 'OPEN YOUTUBE', href: watchUrl });
+            return actions;
+        }
         function hideAllPlayers() {
             document.body.classList.remove('search-first');
             activePlaybackSource = '';
@@ -3325,7 +3336,7 @@
                             playNextSuggestion(true);
                             return;
                         }
-                        setPlayerStatus('YouTube could not play this video.', [{ label: '↻ RETRY', onClick: () => playYouTubeResult(id, title, audioMode) }]);
+                        setPlayerStatus('YouTube could not play this embed. YouTube may require verification or restrict playback in embedded mode.', youtubeFallbackActions(id, () => playYouTubeResult(id, title, audioMode)));
                     }
                 };
                 const existingIframe = youtubePlayer?.getIframe?.();
@@ -3355,9 +3366,11 @@
         function monitorEmbeddedFrame(frame, label, retry) {
             if (!frame) return;
             let settled = false;
-            const timer = setTimeout(() => { if (!settled) setPlayerStatus(`${label} is taking too long to load.`, [{ label: '↻ RETRY', onClick: retry || (() => { frame.src = frame.src; monitorEmbeddedFrame(frame, label, retry); }) }]); }, 12000);
+            const embedId = (() => { try { return new URL(frame.src).pathname.split('/').filter(Boolean).pop() || ''; } catch { return ''; } })();
+            const fallbackRetry = retry || (() => { frame.src = frame.src; monitorEmbeddedFrame(frame, label, retry); });
+            const timer = setTimeout(() => { if (!settled) setPlayerStatus(`${label} is taking too long to load. YouTube may require verification or restrict this embed.`, youtubeFallbackActions(embedId, fallbackRetry)); }, 12000);
             frame.onload = () => { settled = true; clearTimeout(timer); setPlayerStatus(`Playing ${label}`); };
-            frame.onerror = () => { settled = true; clearTimeout(timer); setPlayerStatus(`${label} could not be loaded.`, [{ label: '↻ RETRY', onClick: retry || (() => { frame.src = frame.src; monitorEmbeddedFrame(frame, label, retry); }) }]); };
+            frame.onerror = () => { settled = true; clearTimeout(timer); setPlayerStatus(`${label} could not be loaded. YouTube may require verification or restrict this embed.`, youtubeFallbackActions(embedId, fallbackRetry)); };
             setPlayerStatus(`Opening ${label}…`);
         }
 
