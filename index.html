@@ -1716,6 +1716,23 @@
             if (!response.ok) throw new Error(apiErrorText(body.error || body, `YOUTUBE_HTTP_${response.status}`));
             return body;
         }
+        function youtubeSearchUrl(query) {
+            const term = String(query || '').trim();
+            return term ? `https://www.youtube.com/results?search_query=${encodeURIComponent(term)}` : 'https://www.youtube.com/';
+        }
+        function renderYouTubeApiFallback(query, audioMode, error) {
+            const box = document.getElementById('api-results');
+            if (!box) return;
+            box.replaceChildren();
+            const card = document.createElement('div');
+            card.className = 'search-result-card';
+            card.style.cssText = 'grid-column:1/-1;padding:22px;border:1px solid rgba(255,215,0,.28);border-radius:12px;background:rgba(12,12,12,.86);';
+            const title = document.createElement('strong'); title.textContent = 'YouTube search is temporarily unavailable'; title.style.cssText = 'display:block;color:var(--primary);font:800 .9rem Orbitron,sans-serif;margin-bottom:8px;';
+            const description = document.createElement('p'); description.textContent = 'The YouTube Data API is unavailable or rate-limited. Open official YouTube search instead; any selected result can still play through the privacy-enhanced no-cookie embed.'; description.style.cssText = 'color:#bbb;line-height:1.5;margin:0 0 14px;';
+            const link = document.createElement('a'); link.className = 'player-action'; link.href = youtubeSearchUrl(query); link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'OPEN OFFICIAL YOUTUBE SEARCH';
+            card.append(title, description, link); box.appendChild(card);
+            document.getElementById('search-status').innerText = apiUnavailableMessage('YouTube search', error, 'Use official YouTube search while the API recovers.');
+        }
         async function openKenyaLiveChannel(channel, frame) {
             const channelId = String(channel && channel.channelId || '').trim();
             if (!channelId) return youtubeChannelFallback(channel.name, '', channel.channelUrl || '');
@@ -3000,7 +3017,7 @@
                     .filter(item => fullWords.test(String(item.snippet.title || '')));
                 const video = candidates[0];
                 if (!video) {
-                    setPlayerStatus(`No embeddable full-length YouTube upload was found for ${title}. Use the Trailer button to view official clips.`);
+                setPlayerStatus(`No embeddable full-length YouTube upload was found for ${title}. Use official YouTube search or the Trailer button.`, [{ label: 'OPEN YOUTUBE SEARCH', href: youtubeSearchUrl(`${title} full movie`) }]);
                     showToast('NO FULL-LENGTH YOUTUBE UPLOAD FOUND');
                     return false;
                 }
@@ -3011,7 +3028,7 @@
                 showToast('PLAYING FULL-LENGTH YOUTUBE VIDEO IN STREAM HD');
                 return true;
             } catch (error) {
-                setPlayerStatus(`YouTube full-length search is unavailable for ${title}.`);
+                setPlayerStatus(`YouTube full-length search is unavailable for ${title}. Open official YouTube search instead.`, [{ label: 'OPEN YOUTUBE SEARCH', href: youtubeSearchUrl(`${title} full movie`) }]);
                 showToast('YOUTUBE FULL-LENGTH SEARCH FAILED');
                 return false;
             }
@@ -3258,8 +3275,7 @@
                 renderYouTubeVideoResults(results, searchMode === 'youtube-audio');
                 document.getElementById('search-status').innerText = results.length ? `FOUND ${results.length} OFFICIAL ${regionLabel.toUpperCase()}-FIRST YOUTUBE ${searchMode === 'youtube-audio' ? 'AUDIO' : 'VIDEOS'}` : `NO ${regionLabel.toUpperCase()} YOUTUBE RESULTS FOUND — TRY ANOTHER SEARCH`;
             } catch (error) {
-                resBox.innerHTML = '<p style="padding:30px;color:#777">YouTube search is temporarily unavailable. Check the API key and quota.</p>';
-                document.getElementById('search-status').innerText = apiUnavailableMessage('YouTube search', error, 'Check the API quota or try another search.');
+                renderYouTubeApiFallback(searchTerm || `${regionLabel} official videos`, searchMode === 'youtube-audio', error);
             }
         }
 
