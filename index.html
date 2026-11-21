@@ -739,6 +739,16 @@
         .share-sheet-close { width:100%; margin-top:12px; border:0; background:transparent; color:#777; cursor:pointer; font:700 .7rem 'Source Code Pro',monospace; }
         .share-sheet-close:hover, .share-sheet-close:focus-visible { color:#fff; }
 
+        .movie-api-picker { width:min(92%,480px); margin:auto; padding:24px; border:1px solid rgba(255,140,0,.55); border-radius:18px; background:linear-gradient(145deg,#171717,#060606); box-shadow:0 25px 90px rgba(0,0,0,.82); }
+        .movie-api-picker h2 { margin:0 0 8px; color:#ffb04d; font:900 1.1rem 'Orbitron',sans-serif; letter-spacing:1px; }
+        .movie-api-picker p { margin:0 0 18px; color:#aaa; line-height:1.45; }
+        .movie-api-picker-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+        .movie-api-picker-fields label { display:flex; flex-direction:column; gap:7px; color:#ddd; font:700 .75rem 'Source Code Pro',monospace; text-align:left; }
+        .movie-api-picker-fields select { width:100%; min-height:46px; box-sizing:border-box; color:#fff; background:#0b0b0b; border:1px solid #555; border-radius:9px; padding:9px; font:700 .9rem 'Source Code Pro',monospace; }
+        .movie-api-picker-fields select:focus-visible { border-color:#ffb04d; outline:2px solid #fff; outline-offset:2px; }
+        .movie-api-picker-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:20px; }
+        @media (max-width:520px) { .movie-api-picker { padding:20px; } .movie-api-picker-actions { grid-template-columns:1fr; } }
+
         .search-box { 
             width: 90%; 
             max-width: 900px; 
@@ -1073,6 +1083,21 @@
         </div>
     </div>
 
+    <div id="movie-api-episode-overlay" class="overlay-screen" role="dialog" aria-modal="true" aria-labelledby="movie-api-episode-title">
+        <div class="movie-api-picker" onclick="event.stopPropagation()">
+            <h2 id="movie-api-episode-title">SELECT EPISODE</h2>
+            <p id="movie-api-episode-help">Choose the season and episode to check for full playback.</p>
+            <div class="movie-api-picker-fields">
+                <label for="movie-api-season">Season<select id="movie-api-season" class="paste-input"></select></label>
+                <label for="movie-api-episode">Episode<select id="movie-api-episode" class="paste-input"></select></label>
+            </div>
+            <div class="movie-api-picker-actions">
+                <button id="movie-api-episode-confirm" class="btn btn-primary" type="button">CHECK FULL EPISODE</button>
+                <button id="movie-api-episode-cancel" class="btn" type="button">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
     <div id="details-overlay" class="overlay-screen">
         <div class="details-modal" onclick="event.stopPropagation()">
             <div class="details-img-container">
@@ -1289,8 +1314,8 @@
                 <div class="btn-grid">
                     <button class="btn btn-primary" onclick="openSearch('youtube-audio')">🎧 YOUTUBE AUDIO</button>
                     <button class="btn btn-primary" onclick="openSearch('youtube-video')">▶️ YOUTUBE VIDEOS</button>
-                    <button class="btn btn-primary" style="border-color:#ff8c00;color:#ff8c00;" onclick="openSearch('movieapi-movie')">🎬 AUTHORIZED MOVIE API</button>
-                    <button class="btn" style="border-color:#ff8c00;color:#ff8c00;" onclick="openSearch('movieapi-tv')">📺 AUTHORIZED SERIES API</button>
+                    <button class="btn btn-primary" style="border-color:#ff8c00;color:#ff8c00;" onclick="openSearch('movieapi-movie')">🎬 SEARCH MOVIES</button>
+                    <button class="btn" style="border-color:#ff8c00;color:#ff8c00;" onclick="openSearch('movieapi-tv')">📺 SEARCH SERIES</button>
                     <button class="btn btn-primary" onclick="openSearch('archive')">🎞️ FREE ARCHIVE FILMS</button>
 
                     <button class="btn" style="border-color: #00ff41; color: #00ff41;" onclick="document.getElementById('local-video').click()">📂 PLAY LOCAL</button>
@@ -2421,8 +2446,8 @@
             const banner = document.getElementById('provider-restriction-banner');
             if (!banner) return;
             banner.replaceChildren();
-            const heading = document.createElement('strong'); heading.textContent = 'AUTHORIZED SOURCE RESTRICTION';
-            const message = document.createElement('p'); message.textContent = `The Movie API provider is currently blocking server playback for “${title || 'this title'}”. Stream HD cannot bypass provider access controls. This is not a problem with your device or internet connection.`;
+            const heading = document.createElement('strong'); heading.textContent = 'MOVIE API PROVIDER RESTRICTION';
+            const message = document.createElement('p'); message.textContent = `The Movie API provider is currently blocking full playback for “${title || 'this title'}”. Stream HD cannot bypass provider access controls. This is not a problem with your device or internet connection.`;
             const actions = document.createElement('div'); actions.className = 'provider-restriction-actions';
             if (trailer) { const link = document.createElement('a'); link.href = trailer; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'WATCH OFFICIAL TRAILER'; actions.appendChild(link); }
             const about = document.createElement('a'); about.href = '/about#trust-title'; about.textContent = 'WHY THIS HAPPENS'; actions.appendChild(about);
@@ -3078,9 +3103,9 @@
         function openSearch(type) {
             searchMode = type;
             document.getElementById('search-input').value = '';
-            document.getElementById('search-head-title').innerText = type === 'movie' ? ' 🎬 SEARCH MOVIES' : type === 'tv' ? '📺 SEARCH SERIES' : type === 'movieapi-movie' ? '🎬 AUTHORIZED MOVIE API — MOVIES' : type === 'movieapi-tv' ? '📺 AUTHORIZED MOVIE API — SERIES' : type === 'yocinema' ? '🎞️ SEARCH YOCINEMA' : type === 'youtube-audio' ? '🎧 SEARCH YOUTUBE AUDIO' : type === 'youtube-video' ? '▶️ SEARCH YOUTUBE VIDEOS' : type === 'kenya' ? '🇰🇪 SEARCH KENYA TV' : type === 'archive' ? '🎞️ FREE ARCHIVE FILMS' : '🎵 SEARCH MUSIC';
+            document.getElementById('search-head-title').innerText = type === 'movie' ? ' 🎬 SEARCH MOVIES' : type === 'tv' ? '📺 SEARCH SERIES' : type === 'movieapi-movie' ? '🎬 SEARCH MOVIES' : type === 'movieapi-tv' ? '📺 SEARCH SERIES' : type === 'yocinema' ? '🎞️ SEARCH YOCINEMA' : type === 'youtube-audio' ? '🎧 SEARCH YOUTUBE AUDIO' : type === 'youtube-video' ? '▶️ SEARCH YOUTUBE VIDEOS' : type === 'kenya' ? '🇰🇪 SEARCH KENYA TV' : type === 'archive' ? '🎞️ FREE ARCHIVE FILMS' : '🎵 SEARCH MUSIC';
             document.getElementById('api-results').innerHTML = '';
-            document.getElementById('search-status').innerText = type.startsWith('movieapi-') ? 'SEARCH THE AUTHORIZED MOVIE API CATALOG...' : type === 'kenya' ? 'READY — SEARCH OFFICIAL KENYAN CHANNELS' : type === 'archive' ? 'SEARCHING INTERNET ARCHIVE PRELINGER COLLECTION...' : type === 'yocinema' ? 'LOADING YOCINEMA CATALOG...' : type === 'youtube-audio' ? 'SEARCHING OFFICIAL YOUTUBE AUDIO...' : type === 'youtube-video' ? 'SEARCHING OFFICIAL YOUTUBE VIDEOS...' : 'LOADING TRENDING TODAY...';
+            document.getElementById('search-status').innerText = type.startsWith('movieapi-') ? 'SEARCH THE MOVIE CATALOG — FULL PLAYBACK IS CHECKED WHEN YOU PLAY...' : type === 'kenya' ? 'READY — SEARCH OFFICIAL KENYAN CHANNELS' : type === 'archive' ? 'SEARCHING INTERNET ARCHIVE PRELINGER COLLECTION...' : type === 'yocinema' ? 'LOADING YOCINEMA CATALOG...' : type === 'youtube-audio' ? 'SEARCHING OFFICIAL YOUTUBE AUDIO...' : type === 'youtube-video' ? 'SEARCHING OFFICIAL YOUTUBE VIDEOS...' : 'LOADING TRENDING TODAY...';
             const yocinemaLanguageControls = document.getElementById('yocinema-language-controls');
             if (yocinemaLanguageControls) yocinemaLanguageControls.style.display = type === 'yocinema' ? 'flex' : 'none';
             if (type === 'yocinema') {
@@ -3466,12 +3491,36 @@
             try {
                 const body = await movieApiFetch('catalog-search', { keyword: query, type });
                 const items = Array.isArray(body.data) ? body.data : Array.isArray(body.data?.items) ? body.data.items : Array.isArray(body.results) ? body.results : [];
-                document.getElementById('search-status').innerText = items.length ? `FOUND ${items.length} AUTHORIZED ${type === 'tv' ? 'SERIES' : 'MOVIES'}` : 'NO AUTHORIZED TITLES FOUND';
+                document.getElementById('search-status').innerText = items.length ? `FOUND ${items.length} ${type === 'tv' ? 'SERIES' : 'MOVIES'}` : `NO ${type === 'tv' ? 'SERIES' : 'MOVIES'} FOUND`;
                 renderMovieApiResults(items, type);
             } catch (error) {
                 document.getElementById('search-status').innerText = apiUnavailableMessage('Movie search', error, 'Try again or use the saved catalog.');
                 resBox.innerHTML = `<p style="padding:30px;color:#777">${apiUnavailableMessage('Movie API', error, 'The saved catalog may still be available.')}</p>`;
             }
+        }
+
+        function chooseMovieApiEpisode(title) {
+            return new Promise(resolve => {
+                const overlay = document.getElementById('movie-api-episode-overlay');
+                const seasonSelect = document.getElementById('movie-api-season');
+                const episodeSelect = document.getElementById('movie-api-episode');
+                const confirm = document.getElementById('movie-api-episode-confirm');
+                const cancel = document.getElementById('movie-api-episode-cancel');
+                if (!overlay || !seasonSelect || !episodeSelect || !confirm || !cancel) return resolve(null);
+                document.getElementById('movie-api-episode-title').textContent = `SELECT EPISODE — ${title}`;
+                seasonSelect.replaceChildren(); episodeSelect.replaceChildren();
+                for (let number = 1; number <= 99; number += 1) { const option = document.createElement('option'); option.value = number; option.textContent = `Season ${number}`; seasonSelect.appendChild(option); }
+                for (let number = 1; number <= 999; number += 1) { const option = document.createElement('option'); option.value = number; option.textContent = `Episode ${number}`; episodeSelect.appendChild(option); }
+                let settled = false;
+                const finish = value => { if (settled) return; settled = true; overlay.style.display = 'none'; overlay.setAttribute('aria-hidden', 'true'); document.removeEventListener('keydown', onKey); resolve(value); };
+                const onKey = event => { if (event.key === 'Escape') finish(null); };
+                confirm.onclick = () => finish({ season: Number(seasonSelect.value), episode: Number(episodeSelect.value) });
+                cancel.onclick = () => finish(null);
+                overlay.onclick = () => finish(null);
+                overlay.style.display = 'flex'; overlay.setAttribute('aria-hidden', 'false');
+                document.addEventListener('keydown', onKey);
+                seasonSelect.focus();
+            });
         }
 
         function renderMovieApiResults(results, type) {
@@ -3485,25 +3534,26 @@
                 const img = safeWebUrl(cover || item.poster || item.poster_min || item.poster_org || item.banner_mini) || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=222&color=ffd700&size=512`;
                 const description = item.description || item.overview || item.summary || item.plot || item.synopsis || item.introduction;
                 const rating = item.rating || item.score || item.imdbRating || item.vote_average;
-                const card = createSearchResultCard({ title, description, meta: `AUTHORIZED API · ${type === 'tv' ? 'SERIES' : 'MOVIE'}${year ? ` · ${year}` : ''}${rating ? ` · ★ ${rating}` : ''}`, image: img, alt: `${title} poster`, ariaLabel: `Play ${title}`, onClick: async () => {
+                const card = createSearchResultCard({ title, description, meta: `MOVIE API · ${type === 'tv' ? 'SERIES' : 'MOVIE'} · PLAYBACK CHECK ON OPEN${year ? ` · ${year}` : ''}${rating ? ` · ★ ${rating}` : ''}`, image: img, alt: `${title} poster`, ariaLabel: `Play ${title}`, onClick: async () => {
                     let season = '', episode = '';
                     if (type === 'tv') {
-                        season = window.prompt('Season number', '1');
-                        episode = window.prompt('Episode number', '1');
-                        if (!/^\d+$/.test(String(season || '')) || !/^\d+$/.test(String(episode || '')) || Number(season) < 1 || Number(episode) < 1 || Number(season) > 99 || Number(episode) > 999) return showToast('ENTER VALID SEASON AND EPISODE NUMBERS');
+                        const selection = await chooseMovieApiEpisode(title);
+                        if (!selection) return;
+                        season = selection.season;
+                        episode = selection.episode;
                     }
                     setSuggestionQueue(results.slice(resultIndex + 1).map(nextItem => {
                         const nextId = String(nextItem && (nextItem.subjectId || nextItem.id) || '').trim();
                         const nextTitle = String(nextItem?.title || nextItem?.name || 'Suggested title');
                         const nextYear = String(nextItem?.year || nextItem?.release_year || nextItem?.releaseDate || '').slice(0, 4);
-                        return { title: nextTitle, meta: `AUTHORIZED API · ${type === 'tv' ? `SERIES S${season} E${episode}` : 'MOVIE'}${nextYear ? ` · ${nextYear}` : ''}`, play: () => playMovieApiItem(nextId, nextTitle, type, season, episode, nextItem) };
+                        return { title: nextTitle, meta: `MOVIE API · ${type === 'tv' ? `SERIES S${season} E${episode}` : 'MOVIE'}${nextYear ? ` · ${nextYear}` : ''}`, play: () => playMovieApiItem(nextId, nextTitle, type, season, episode, nextItem) };
                     }));
                     closeSearch();
                     await playMovieApiItem(id, title, type, season, episode, item);
                 } });
                 resBox.appendChild(card);
             });
-            if (!resBox.children.length) resBox.innerHTML = '<p style="padding:30px;color:#777">No titles were returned by the authorized Movie API.</p>';
+            if (!resBox.children.length) resBox.innerHTML = '<p style="padding:30px;color:#777">No movie or series titles were returned. Try another search.</p>';
         }
 
         function movieApiTrailer(item) {
@@ -3519,33 +3569,29 @@
                 const body = await movieApiFetch('stream', params);
                 const data = body && body.data ? body.data : body;
                 const resolveMediaUrl = value => { const text = String(value || '').trim(); if (!text) return ''; try { return safeWebUrl(text) || (text.startsWith('/') ? safeWebUrl(new URL(text, window.location.origin).href) : ''); } catch { return ''; } };
-                const candidates = [data && data.url, data && data.proxyUrl, data && data.proxy_url, data && data.stream_url, data && data.streamUrl, data && data.link, data && data.file, ...(Array.isArray(data && data.links) ? data.links.map(item => item && (item.proxyUrl || item.proxy_url || item.url || item.link || item.file)) : []), ...(Array.isArray(data && data.streams) ? data.streams.map(item => item && (item.proxyUrl || item.proxy_url || item.url || item.link || item.file)) : [])].map(resolveMediaUrl).filter(Boolean);
+                const candidates = [data && data.url, data && data.proxyUrl, data && data.proxy_url, data && data.stream_url, data && data.streamUrl, data && data.link, data && data.file, ...(Array.isArray(data && data.links) ? data.links.map(entry => entry && (entry.proxyUrl || entry.proxy_url || entry.url || entry.link || entry.file)) : []), ...(Array.isArray(data && data.streams) ? data.streams.map(entry => entry && (entry.proxyUrl || entry.proxy_url || entry.url || entry.link || entry.file)) : [])].map(resolveMediaUrl).filter(Boolean);
                 const streamUrl = candidates[0];
-                if (!streamUrl) throw new Error('MOVIE_API returned no playable stream URL');
+                if (!streamUrl) throw new Error('MOVIE_API returned no playable full-media URL');
                 activePlayerContext = { ...activePlayerContext, title, type, movieApiId: id, season, episode };
-                setPlayerStatus(type === 'tv' ? `Checking authorized API S${season} E${episode} media…` : 'Checking authorized API media…');
+                setPlayerStatus(type === 'tv' ? `Checking full episode S${season} E${episode}…` : 'Checking full movie playback…');
                 await probeAuthorizedMedia(streamUrl);
                 if (!playDirectMedia(streamUrl, title, mediaKind(streamUrl) || 'video')) throw new Error('MOVIE_API media player could not initialize');
             } catch (error) {
-                const providerMessage = apiErrorText(error.message, 'Provider unavailable');
+                const providerMessage = apiErrorText(error.message, 'The provider returned an error.');
                 const trailer = movieApiTrailer(item);
-                if (trailer) {
-                    playDirectMedia(trailer, `${title} — official trailer`, 'video');
-                    const retryAction = error.retryable === false ? [] : [{ label: '↻ RETRY FULL PLAYBACK', onClick: () => playMovieApiItem(id, title, type, season, episode, item) }];
-                    const reason = error.code === 'UPSTREAM_ACCESS_BLOCKED' ? 'The authorized provider blocked server playback.' : 'The authorized provider is temporarily unavailable.';
-                    setPlayerStatus(`${reason} Playing the official trailer instead.`, retryAction);
-                    if (error.code === 'UPSTREAM_ACCESS_BLOCKED') showProviderRestrictionBanner(title, trailer, error);
-                    showToast(error.code === 'UPSTREAM_ACCESS_BLOCKED' ? 'PROVIDER BLOCKED FULL PLAYBACK — OFFICIAL TRAILER PLAYING' : 'FULL PLAYBACK UNAVAILABLE — OFFICIAL TRAILER PLAYING');
-                    return;
-                }
                 const blocked = error.code === 'UPSTREAM_ACCESS_BLOCKED';
+                const retry = error.retryable === false ? [] : [{ label: '↻ RETRY FULL PLAYBACK', onClick: () => playMovieApiItem(id, title, type, season, episode, item) }];
+                const trailerAction = trailer ? [{ label: '▶ PLAY OFFICIAL TRAILER', onClick: () => {
+                    playDirectMedia(trailer, `${title} — official trailer`, 'video');
+                    setPlayerStatus(`Playing the official trailer for ${title}. Full ${type === 'tv' ? 'episode' : 'movie'} playback is still unavailable.`);
+                } }] : [];
+                const context = type === 'tv' ? `episode S${season} E${episode}` : 'movie';
                 const message = blocked
-                    ? `Full authorized playback for ${title} is blocked by the Movie API provider. Stream HD cannot bypass that restriction.`
-                    : `Authorized playback could not start for ${title}.`;
-                const actions = error.retryable === false ? [] : [{ label: '↻ RETRY', onClick: () => playMovieApiItem(id, title, type, season, episode, item) }];
-                setPlayerStatus(message, actions);
+                    ? `Full ${context} playback is blocked by the Movie API provider. Stream HD cannot bypass provider access controls.`
+                    : `Full ${context} playback is unavailable. The provider did not return a playable media response.`;
+                setPlayerStatus(message, [...trailerAction, ...retry]);
                 if (blocked) showProviderRestrictionBanner(title, trailer, error);
-                showToast(`${blocked ? 'PROVIDER BLOCKED PLAYBACK' : 'PLAYBACK UNAVAILABLE'} — ${providerMessage.slice(0, 80)}`);
+                showToast(`${blocked ? 'PROVIDER BLOCKED FULL PLAYBACK' : 'FULL PLAYBACK UNAVAILABLE'} — ${providerMessage.slice(0, 80)}`);
             }
         }
 
